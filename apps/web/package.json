@@ -1,0 +1,45 @@
+{
+  "name": "@collaby/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@collaby/editor": "workspace:*",
+    "@collaby/shared": "workspace:*",
+    "@hocuspocus/provider": "^3.1.0",
+    "@simplewebauthn/browser": "^13.1.0",
+    "@tiptap/core": "^3.31.0",
+    "@tiptap/extension-collaboration": "^3.31.0",
+    "@tiptap/extension-collaboration-caret": "^3.31.0",
+    "@tiptap/pm": "^3.31.0",
+    "@tiptap/react": "^3.31.0",
+    "@tiptap/suggestion": "^3.31.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.469.0",
+    "mermaid": "^11.4.1",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.20",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "postcss": "^8.5.1",
+    "sass": "^1.83.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}

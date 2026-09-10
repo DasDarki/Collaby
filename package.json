@@ -1,0 +1,29 @@
+{
+  "name": "collaby",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Collaby - a collaborative markdown drive",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @collaby/db generate",
+    "db:migrate": "pnpm --filter @collaby/db migrate",
+    "db:studio": "pnpm --filter @collaby/db studio",
+    "infra:up": "docker compose -f docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f docker-compose.dev.yml down"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0"
+  }
+}

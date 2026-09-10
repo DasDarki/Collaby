@@ -1,0 +1,24 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy server:4000
+	}
+
+	handle /collab {
+		reverse_proxy server:4000
+	}
+
+	handle /health {
+		reverse_proxy server:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

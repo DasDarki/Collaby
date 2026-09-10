@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-collaby}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a database password}
+      POSTGRES_DB: ${POSTGRES_DB:-collaby}
+    volumes:
+      - collaby-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-collaby} -d ${POSTGRES_DB:-collaby}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-collaby}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-collaby}
+      DATA_DIR: /data
+      JWT_SECRET: ${JWT_SECRET:?set a long random secret}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set a long random secret}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:?set the public url of this instance}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL}}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Collaby}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GIT_COMMIT_DEBOUNCE_MS: ${GIT_COMMIT_DEBOUNCE_MS:-30000}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-26214400}
+    volumes:
+      - collaby-data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - server
+    ports:
+      - '${PUBLIC_PORT:-8080}:8080'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - collaby-caddy:/data
+
+volumes:
+  collaby-postgres:
+  collaby-data:
+  collaby-caddy:

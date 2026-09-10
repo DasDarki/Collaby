@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-night-900: #14161f;
+  --color-night-850: #171a24;
+  --color-night-800: #1a1d28;
+  --color-night-750: #1f2330;
+  --color-night-700: #232734;
+  --color-night-600: #2f3442;
+  --color-night-500: #3d4354;
+
+  --color-moon: #e6e9f2;
+  --color-haze: #9aa3bd;
+  --color-dusk: #6c7590;
+
+  --color-lull-300: #d3c6ff;
+  --color-lull-400: #b9a3ff;
+  --color-lull-500: #9b81f0;
+
+  --color-lamp: #f0b76b;
+  --color-alarm: #f2777a;
+  --color-leaf: #6fcf97;
+
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-prose: var(--font-newsreader), Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 11px;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --rail-width: 3px;
+  }
+
+  * {
+    border-color: var(--color-night-600);
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-night-900);
+    background-image: linear-gradient(180deg, #171a26 0%, var(--color-night-900) 55%);
+    background-attachment: fixed;
+    color: var(--color-moon);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-lull-400) 32%, transparent);
+    color: var(--color-moon);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-lull-400);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-night-600);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-night-500);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
