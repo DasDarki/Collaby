@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   AlignCenter,
@@ -11,6 +11,8 @@ import {
   ChevronDown,
   Code,
   Code2,
+  FileText,
+  Globe,
   Highlighter,
   Image as ImageIcon,
   Italic,
@@ -32,7 +34,9 @@ import {
   Undo2,
   Workflow,
 } from 'lucide-react';
+import { internalHref } from '@collaby/editor';
 import { Popover } from '@/components/popover';
+import { api } from '@/lib/api';
 import { Button, Input } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
@@ -283,19 +287,102 @@ function InsertControl({ editor, onInsertImage }: { editor: Editor; onInsertImag
   );
 }
 
-function LinkControl({ editor }: { editor: Editor }) {
-  const [href, setHref] = useState('');
+interface DocumentHit {
+  id: string;
+  title: string;
+  icon: string | null;
+}
+
+function looksLikeUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || /\s/.test(trimmed)) return null;
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) return trimmed;
+  if (/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(trimmed)) return `https://${trimmed}`;
+
+  return null;
+}
+
+function LinkControl({ editor, workspaceId }: { editor: Editor; workspaceId: string }) {
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<DocumentHit[]>([]);
+  const [open, setOpen] = useState(false);
+
+  const webAddress = looksLikeUrl(query);
+  const active = editor.isActive('link');
+
+  useEffect(() => {
+    if (!open) return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      api
+        .get<DocumentHit[]>('/api/documents/search', {
+          query: { q: query.trim(), workspaceId },
+          signal: controller.signal,
+        })
+        .then(setHits)
+        .catch(() => undefined);
+    }, 140);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [open, query, workspaceId]);
+
+  function applyWebAddress(close: () => void) {
+    if (!webAddress) return;
+
+    const { empty } = editor.state.selection;
+    const chain = editor.chain().focus();
+
+    if (empty)
+      chain
+        .insertContent({
+          type: 'text',
+          text: webAddress,
+          marks: [{ type: 'link', attrs: { href: webAddress } }],
+        })
+        .run();
+    else chain.extendMarkRange('link').setLink({ href: webAddress }).run();
+
+    setQuery('');
+    close();
+  }
+
+  function applyDocument(hit: DocumentHit, close: () => void) {
+    const href = internalHref(hit.id);
+    const { empty } = editor.state.selection;
+    const chain = editor.chain().focus();
+
+    if (empty) {
+      chain
+        .insertContent({
+          type: 'text',
+          text: hit.title,
+          marks: [{ type: 'link', attrs: { href, documentId: hit.id } }],
+        })
+        .run();
+    } else {
+      chain.extendMarkRange('link').setMark('link', { href, documentId: hit.id }).run();
+    }
+
+    setQuery('');
+    close();
+  }
 
   return (
     <Popover
       align="start"
-      className="w-[280px]"
-      trigger={({ toggle }) => (
+      className="w-[300px]"
+      trigger={({ open: isOpen, toggle }) => (
         <ToolButton
           label="Link"
-          active={editor.isActive('link')}
+          active={active}
           onClick={() => {
-            setHref((editor.getAttributes('link').href as string) ?? '');
+            setQuery(isOpen ? '' : ((editor.getAttributes('link').href as string) ?? ''));
+            setOpen(!isOpen);
             toggle();
           }}
         >
@@ -304,28 +391,59 @@ function LinkControl({ editor }: { editor: Editor }) {
       )}
     >
       {({ close }) => (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (href.trim().length === 0) {
-              editor.chain().focus().unsetLink().run();
-            } else {
-              editor.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
-            }
-            close();
-          }}
-        >
+        <div className="flex flex-col gap-2">
           <Input
-            value={href}
-            onChange={(event) => setHref(event.target.value)}
-            placeholder="https://example.com"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              if (webAddress) applyWebAddress(close);
+              else if (hits[0]) applyDocument(hits[0], close);
+            }}
+            placeholder="Search pages or paste a link"
+            aria-label="Link target"
             autoFocus
           />
-          <div className="flex gap-1.5">
-            <Button type="submit" variant="primary" size="sm" className="flex-1">
-              Apply
-            </Button>
+
+          <div className="max-h-[220px] overflow-y-auto">
+            {webAddress ? (
+              <button
+                type="button"
+                onClick={() => applyWebAddress(close)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12.5px] text-haze transition-colors hover:bg-night-750 hover:text-moon"
+              >
+                <Globe size={13} className="shrink-0 text-dusk" />
+                <span className="truncate">{webAddress}</span>
+              </button>
+            ) : null}
+
+            {hits.length === 0 && !webAddress ? (
+              <p className="px-2 py-3 text-[12px] text-dusk">
+                {query.trim().length > 0 ? 'No matching pages.' : 'Start typing to find a page.'}
+              </p>
+            ) : null}
+
+            {hits.map((hit) => (
+              <button
+                key={hit.id}
+                type="button"
+                onClick={() => applyDocument(hit, close)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12.5px] text-haze transition-colors hover:bg-night-750 hover:text-moon"
+              >
+                <span className="shrink-0 text-dusk">
+                  {hit.icon ? (
+                    <span className="text-[12.5px]">{hit.icon}</span>
+                  ) : (
+                    <FileText size={13} />
+                  )}
+                </span>
+                <span className="truncate">{hit.title}</span>
+              </button>
+            ))}
+          </div>
+
+          {active ? (
             <Button
               variant="outline"
               size="sm"
@@ -334,10 +452,10 @@ function LinkControl({ editor }: { editor: Editor }) {
                 close();
               }}
             >
-              Remove
+              Remove link
             </Button>
-          </div>
-        </form>
+          ) : null}
+        </div>
       )}
     </Popover>
   );
@@ -419,11 +537,13 @@ function ColorControl({ editor, kind }: { editor: Editor; kind: 'text' | 'highli
 
 export function EditorToolbar({
   editor,
+  workspaceId,
   canComment,
   onAddComment,
   onInsertImage,
 }: {
   editor: Editor;
+  workspaceId: string;
   canComment: boolean;
   onAddComment: () => void;
   onInsertImage: () => void;
@@ -528,7 +648,7 @@ export function EditorToolbar({
 
       <Divider />
 
-      {editable ? <LinkControl editor={editor} /> : null}
+      {editable ? <LinkControl editor={editor} workspaceId={workspaceId} /> : null}
       {editable ? <InsertControl editor={editor} onInsertImage={onInsertImage} /> : null}
 
       {canComment ? (

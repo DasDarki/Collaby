@@ -280,6 +280,7 @@ export function CollabyEditor({
     <>
       <EditorToolbar
         editor={editor}
+        workspaceId={workspaceId}
         canComment={canComment}
         onAddComment={requestComment}
         onInsertImage={insertImage}
