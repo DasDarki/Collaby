@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Editor } from '@tiptap/react';
-import { History, MessageSquare, PanelLeft, Share2, X } from 'lucide-react';
+import { History, ListTree, MessageSquare, PanelLeft, Share2, X } from 'lucide-react';
 import { can, type DocumentDetail } from '@collaby/shared';
 import { CollabyEditor } from '@/components/editor/collaby-editor';
 import { PresenceStack } from '@/components/editor/presence';
@@ -11,6 +11,7 @@ import { CommentsPanel } from '@/components/comments-panel';
 import { HistoryPanel } from '@/components/history-panel';
 import { SearchDialog, useGlobalSearch } from '@/components/search-dialog';
 import { ShareDialog } from '@/components/share-dialog';
+import { TocPanel } from '@/components/toc-panel';
 import { Sidebar } from '@/components/sidebar';
 import { Banner, Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -26,7 +27,7 @@ const GUEST_IDENTITY: CollabIdentity = {
   avatarUrl: null,
 };
 
-type Panel = 'none' | 'comments' | 'history';
+type Panel = 'none' | 'comments' | 'history' | 'toc';
 
 export function DocumentView({
   documentId,
@@ -44,6 +45,7 @@ export function DocumentView({
   const [panel, setPanel] = useState<Panel>('none');
   const [sharing, setSharing] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const search = useGlobalSearch();
   const [title, setTitle] = useState('');
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -216,6 +218,21 @@ export function DocumentView({
             </span>
           ) : null}
 
+          <button
+            type="button"
+            aria-label="Contents"
+            title="Contents"
+            onClick={() => setPanel(panel === 'toc' ? 'none' : 'toc')}
+            className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-md',
+              panel === 'toc'
+                ? 'bg-night-700 text-moon'
+                : 'text-dusk hover:bg-night-700 hover:text-moon',
+            )}
+          >
+            <ListTree size={14} />
+          </button>
+
           {canSeeHistory ? (
             <button
               type="button"
@@ -261,7 +278,7 @@ export function DocumentView({
           ) : null}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           <CollabyEditor
             documentId={documentId}
             workspaceId={detail.workspaceId}
@@ -284,6 +301,12 @@ export function DocumentView({
           />
         </div>
       </div>
+
+      {panel === 'toc' ? (
+        <div className="fixed inset-0 z-40 lg:static lg:inset-auto lg:z-auto lg:flex">
+          <TocPanel editor={editor} scrollRef={scrollRef} onClose={() => setPanel('none')} />
+        </div>
+      ) : null}
 
       {panel === 'comments' ? (
         <div className="fixed inset-0 z-40 lg:static lg:inset-auto lg:z-auto lg:flex">
@@ -324,8 +347,6 @@ export function DocumentView({
           onClose={() => setSharing(false)}
         />
       ) : null}
-
-      {editor ? null : null}
     </div>
   );
 }

@@ -37,6 +37,7 @@ interface gets its look: a dark, quiet workspace built for writing at night.
 | Images   | upload, drag to resize, crop, align, wrap text around them                                     |
 | Links    | external links open in a new tab after a warning, internal links autocomplete with `[[`        |
 | Comments | anchored to a text range, with replies and resolve                                             |
+| Contents | a collapsible outline of the headings that follows your scrolling                              |
 | Layout   | left, centre, right and justified alignment                                                    |
 
 ## Getting started
