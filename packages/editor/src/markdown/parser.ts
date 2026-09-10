@@ -96,6 +96,7 @@ const tokenSpec = {
       align: attributeOf(token, 'data-align') ?? 'left',
       wrap: attributeOf(token, 'data-wrap') ?? 'none',
       crop: parseCropAttribute(attributeOf(token, 'data-crop')),
+      showCaption: attributeOf(token, 'data-caption') === 'true',
       assetId: attributeOf(token, 'data-asset-id'),
     }),
   },

@@ -148,11 +148,35 @@ export default async function shareRoutes(
     const link = await findActiveShareLink(db, token);
     if (!link) throw notFound('This link is no longer available');
 
+    const requiresPassword = Boolean(link.passwordHash);
+    let title: string | null = null;
+
+    if (!requiresPassword && link.documentId) {
+      const [document] = await db
+        .select({ title: schema.documents.title })
+        .from(schema.documents)
+        .where(and(eq(schema.documents.id, link.documentId), isNull(schema.documents.deletedAt)))
+        .limit(1);
+
+      title = document?.title ?? null;
+    }
+
+    if (!requiresPassword && !link.documentId && link.workspaceId) {
+      const [workspace] = await db
+        .select({ name: schema.workspaces.name })
+        .from(schema.workspaces)
+        .where(eq(schema.workspaces.id, link.workspaceId))
+        .limit(1);
+
+      title = workspace?.name ?? null;
+    }
+
     return {
       role: link.role,
       documentId: link.documentId,
       workspaceId: link.workspaceId,
-      requiresPassword: Boolean(link.passwordHash),
+      requiresPassword,
+      title,
     };
   });
 

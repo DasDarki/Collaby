@@ -57,6 +57,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      INTERNAL_API_URL: http://server:4000
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
 
   proxy:
     build:

@@ -67,6 +67,11 @@ export const MediaImage = Image.extend({
           return crop ? { 'data-crop': crop } : {};
         },
       },
+      showCaption: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-caption') === 'true',
+        renderHTML: (attributes) => (attributes.showCaption ? { 'data-caption': 'true' } : {}),
+      },
       assetId: {
         default: null,
         parseHTML: (element) => element.getAttribute('data-asset-id'),

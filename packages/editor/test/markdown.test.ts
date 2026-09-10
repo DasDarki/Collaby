@@ -75,6 +75,23 @@ describe('markdown round trip', () => {
     assert.equal(roundTrip(source).trim(), source);
   });
 
+  it('keeps an image caption flag', () => {
+    const source = '<img src="https://example.com/c.png" alt="A wide shot" data-caption="true" />';
+    assert.equal(roundTrip(source).trim(), source);
+
+    const doc = markdownToDocument(source);
+    assert.equal(doc.firstChild?.attrs.showCaption, true);
+  });
+
+  it('leaves a plain image without a caption', () => {
+    const doc = markdownToDocument('![just alt](https://example.com/d.png)');
+    assert.equal(doc.firstChild?.attrs.showCaption, false);
+    assert.equal(
+      roundTrip('![just alt](https://example.com/d.png)').trim(),
+      '![just alt](https://example.com/d.png)',
+    );
+  });
+
   it('keeps external and internal links apart', () => {
     const source =
       'External [link](https://example.com) and internal [doc](collaby:doc/1f4d3c2b-0000-4000-8000-000000000000).';

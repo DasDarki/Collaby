@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import { MediaImage, type ImageAlign, type ImageCrop, type ImageWrap } from '@collaby/editor';
-import { AlignCenter, AlignLeft, AlignRight, Check, Crop, Trash2, WrapText, X } from 'lucide-react';
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Captions,
+  CaptionsOff,
+  Check,
+  Crop,
+  Trash2,
+  WrapText,
+  X,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
@@ -54,6 +65,7 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Nod
     align: ImageAlign;
     wrap: ImageWrap;
     crop: ImageCrop | null;
+    showCaption: boolean;
   };
 
   const crop = attrs.crop ?? FULL_CROP;
@@ -226,6 +238,14 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Nod
             <WrapText size={13} />
           </ToolbarButton>
 
+          <ToolbarButton
+            label={attrs.showCaption ? 'Hide the caption' : 'Show a caption'}
+            active={attrs.showCaption}
+            onClick={() => updateAttributes({ showCaption: !attrs.showCaption })}
+          >
+            {attrs.showCaption ? <Captions size={13} /> : <CaptionsOff size={13} />}
+          </ToolbarButton>
+
           <ToolbarButton label="Crop" active={false} onClick={() => setCropping(true)}>
             <Crop size={13} />
           </ToolbarButton>
@@ -340,8 +360,20 @@ function ImageView({ node, updateAttributes, deleteNode, selected, editor }: Nod
         ) : null}
       </div>
 
-      {attrs.alt ? (
-        <figcaption className="mt-1.5 text-[12px] text-dusk">{attrs.alt}</figcaption>
+      {attrs.showCaption ? (
+        <figcaption contentEditable={false} className="mt-1.5">
+          {editable ? (
+            <input
+              value={attrs.alt ?? ''}
+              onChange={(event) => updateAttributes({ alt: event.target.value })}
+              placeholder="Describe this image"
+              aria-label="Image caption"
+              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[12px] text-dusk outline-none transition-colors placeholder:text-dusk/60 hover:border-night-600 focus:border-lull-400 focus:text-haze"
+            />
+          ) : (
+            <span className="block px-1 text-[12px] text-dusk">{attrs.alt}</span>
+          )}
+        </figcaption>
       ) : null}
     </NodeViewWrapper>
   );

@@ -38,14 +38,13 @@ function writeAligned(
 }
 
 function serializeImage(state: MarkdownSerializerState, node: ProseMirrorNode): void {
-  const { src, alt, title, width, height, align, wrap, crop, assetId } = node.attrs as Record<
-    string,
-    unknown
-  >;
+  const { src, alt, title, width, height, align, wrap, crop, assetId, showCaption } =
+    node.attrs as Record<string, unknown>;
   const needsHtml =
     Boolean(width) ||
     Boolean(height) ||
     Boolean(crop) ||
+    Boolean(showCaption) ||
     (typeof align === 'string' && align !== 'left') ||
     (typeof wrap === 'string' && wrap !== 'none');
 
@@ -66,6 +65,7 @@ function serializeImage(state: MarkdownSerializerState, node: ProseMirrorNode): 
   if (height) attributes.push(`height="${escapeHtmlAttribute(String(height))}"`);
   if (typeof align === 'string' && align !== 'left') attributes.push(`data-align="${align}"`);
   if (typeof wrap === 'string' && wrap !== 'none') attributes.push(`data-wrap="${wrap}"`);
+  if (showCaption) attributes.push('data-caption="true"');
   if (crop && typeof crop === 'object') {
     const box = crop as { x: number; y: number; width: number; height: number };
     attributes.push(`data-crop="${box.x},${box.y},${box.width},${box.height}"`);

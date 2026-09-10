@@ -26,19 +26,20 @@ interface gets its look: a dark, quiet workspace built for writing at night.
 
 ## Editor features
 
-|          |                                                                                                |
-| -------- | ---------------------------------------------------------------------------------------------- |
-| Text     | bold, italic, underline, strikethrough, inline code, text colour, background colour, highlight |
-| Blocks   | headings 1-6, paragraphs, quotes, dividers, code blocks with syntax highlighting               |
-| Lists    | bullet, numbered, task lists (`- [ ]`)                                                         |
-| Callouts | Obsidian syntax (`> [!WARNING] Title`), 13 kinds, collapsible                                  |
-| Tables   | with per-column alignment                                                                      |
-| Diagrams | Mermaid, rendered live                                                                         |
-| Images   | upload, drag to resize, crop, align, wrap text around them                                     |
-| Links    | external links open in a new tab after a warning, internal links autocomplete with `[[`        |
-| Comments | anchored to a text range, with replies and resolve                                             |
-| Contents | a collapsible outline of the headings that follows your scrolling                              |
-| Layout   | left, centre, right and justified alignment                                                    |
+|               |                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| Text          | bold, italic, underline, strikethrough, inline code, text colour, background colour, highlight |
+| Blocks        | headings 1-6, paragraphs, quotes, dividers, code blocks with syntax highlighting               |
+| Lists         | bullet, numbered, task lists (`- [ ]`)                                                         |
+| Callouts      | Obsidian syntax (`> [!WARNING] Title`), 13 kinds, collapsible                                  |
+| Tables        | with per-column alignment                                                                      |
+| Diagrams      | Mermaid, rendered live                                                                         |
+| Images        | upload, drag to resize, crop, align, wrap text around them                                     |
+| Links         | external links open in a new tab after a warning, internal links autocomplete with `[[`        |
+| Comments      | anchored to a text range, with replies and resolve                                             |
+| Contents      | a collapsible outline of the headings that follows your scrolling                              |
+| Link previews | a shared page unfurls in Slack or Discord with its own title                                   |
+| Layout        | left, centre, right and justified alignment                                                    |
 
 ## Getting started
 

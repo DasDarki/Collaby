@@ -101,6 +101,17 @@ export function DocumentView({
     });
   }, [user, detail, loadWorkspaces, loadDocuments]);
 
+  useEffect(() => {
+    if (!detail) return;
+
+    const previous = document.title;
+    document.title = detail.title ? `${detail.title} · Collaby` : 'Collaby';
+
+    return () => {
+      document.title = previous;
+    };
+  }, [detail?.title, detail]);
+
   const commitTitle = useCallback(async () => {
     if (!detail || title.trim().length === 0 || title === detail.title) return;
     await renameDocument(detail.id, title.trim());

@@ -1,37 +1,47 @@
-'use client';
+import type { Metadata } from 'next';
+import { DocumentRoute } from './client';
+import { pageMetadata, readShareInfo } from '@/lib/server-metadata';
 
-import { Suspense, use } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { AuthGate } from '@/components/auth-gate';
-import { DocumentView } from '@/components/document-view';
-import { Spinner } from '@/components/ui';
+type RouteParams = { documentId: string };
+type RouteSearch = { share?: string | string[] };
 
-function DocumentRoute({ params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = use(params);
-  const search = useSearchParams();
-  const shareToken = search.get('share');
+function shareTokenOf(search: RouteSearch): string | null {
+  const value = search.share;
+  if (typeof value === 'string' && value.length > 0) return value;
+  return null;
+}
 
-  if (shareToken) {
-    return <DocumentView documentId={documentId} shareToken={shareToken} />;
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<RouteParams>;
+  searchParams: Promise<RouteSearch>;
+}): Promise<Metadata> {
+  const [{ documentId }, search] = await Promise.all([params, searchParams]);
+  const token = shareTokenOf(search);
+
+  if (!token) {
+    return pageMetadata(null, 'A collaborative markdown drive that keeps every version.');
   }
 
-  return (
-    <AuthGate>
-      <DocumentView documentId={documentId} shareToken={null} />
-    </AuthGate>
+  const info = await readShareInfo(token);
+  const visible = info && !info.requiresPassword && info.documentId === documentId;
+
+  return pageMetadata(
+    visible ? info.title : null,
+    visible ? 'Shared with you on Collaby.' : 'A collaborative markdown drive.',
   );
 }
 
-export default function DocumentPage({ params }: { params: Promise<{ documentId: string }> }) {
-  return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-dvh items-center justify-center">
-          <Spinner />
-        </main>
-      }
-    >
-      <DocumentRoute params={params} />
-    </Suspense>
-  );
+export default async function DocumentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<RouteParams>;
+  searchParams: Promise<RouteSearch>;
+}) {
+  const [{ documentId }, search] = await Promise.all([params, searchParams]);
+
+  return <DocumentRoute documentId={documentId} shareToken={shareTokenOf(search)} />;
 }
