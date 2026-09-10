@@ -67,7 +67,7 @@ services:
       - web
       - server
     expose:
-      - '8080'
+      - '80'
     volumes:
       - collaby-caddy:/data
 

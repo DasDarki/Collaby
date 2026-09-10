@@ -3,7 +3,7 @@
 	auto_https off
 }
 
-:8080 {
+:80 {
 	encode zstd gzip
 
 	handle /up {

@@ -112,10 +112,10 @@ Two named volumes hold state worth backing up: `collaby-postgres` and `collaby-d
 
 Point it at this repository, choose _Docker Compose_, and set `POSTGRES_PASSWORD`,
 `JWT_SECRET`, `SECRET_ENCRYPTION_KEY` and `PUBLIC_WEB_URL`. Give the `proxy` service your
-domain and port `8080`.
+domain and port `80`.
 
 No host port is involved: Coolify's own proxy reaches the container over the Docker
-network, so `docker-compose.yml` only exposes 8080 rather than binding it. The host
+network, so `docker-compose.yml` only exposes 80 rather than binding it. The host
 binding lives in `docker-compose.override.yml`, which Compose merges automatically for a
 plain `docker compose up` but which Coolify ignores, because it passes an explicit `-f`.
 
