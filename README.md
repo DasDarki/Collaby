@@ -53,6 +53,44 @@ pnpm dev                      # web on :3000, API on :4000
 
 Open http://localhost:3000 and create an account. You get a personal workspace right away.
 
+## Single sign-on
+
+Collaby speaks plain OpenID Connect, so any compliant provider works: Auth0, Authentik,
+Keycloak, Zitadel, Logto, Google, and others. Point it at an issuer and it reads the rest
+from that provider's discovery document.
+
+```bash
+OIDC_ISSUER=https://your-tenant.eu.auth0.com
+OIDC_CLIENT_ID=...
+OIDC_CLIENT_SECRET=...
+OIDC_PROVIDER_NAME=Auth0        # the button reads "Continue with Auth0"
+```
+
+Whatever the provider, register Collaby as a **regular web application** (one that keeps a
+client secret, not a single-page app) and allow exactly this callback URL:
+
+```
+https://your-collaby-domain/api/auth/oidc/callback
+```
+
+Nothing else needs allowing. Collaby redirects the browser from its own server, so the
+provider never sees a JavaScript origin from us.
+
+**Auth0 in particular:** create an application of type _Regular Web Application_, put the
+callback URL above into _Allowed Callback URLs_, and copy Domain, Client ID and Client
+Secret into the three variables. `OIDC_ISSUER` is the domain with `https://` in front; a
+trailing slash is fine either way. _Allowed Web Origins_ can stay empty.
+
+One thing worth knowing before you plan around it: Auth0's social connections use shared
+development keys only for testing. To offer "sign in with Google" through Auth0 in
+production you still have to create your own Google OAuth client. Auth0's own database
+logins, passwordless email, and connections like GitHub have no such requirement.
+
+The first sign-on creates an account and a personal workspace. Later sign-ons are matched
+on the provider's issuer and subject. If an account with the same address already exists,
+the two are linked, and its password keeps working. Collaby refuses a sign-on whose email
+the provider has not verified, so nobody can take over an account by claiming its address.
+
 ## Deploying
 
 The compose file serves everything from one domain through Caddy, which keeps

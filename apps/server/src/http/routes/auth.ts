@@ -14,7 +14,7 @@ import { hashPassword, verifyPassword } from '../../auth/password.js';
 import { createSession, revokeSession, rotateSession } from '../../auth/sessions.js';
 import { hashRecoveryCode, verifyTotpCode } from '../../auth/totp.js';
 import { buildAuthenticationOptions, verifyAuthentication } from '../../auth/webauthn.js';
-import { createAuthorizationRequest, exchangeAuthorizationCode } from '../../auth/google.js';
+import { createAuthorizationRequest, exchangeAuthorizationCode } from '../../auth/oidc.js';
 import { avatarColorFor, findUserByEmail } from '../../services/users.js';
 import { createWorkspace } from '../../services/workspaces.js';
 import {
@@ -59,7 +59,7 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
   }
 
   app.get('/providers', async () => ({
-    google: env.googleEnabled,
+    oidc: env.oidc ? { name: env.oidc.name } : null,
     passkeys: true,
     registration: env.ALLOW_REGISTRATION,
   }));
@@ -289,15 +289,30 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
     return completeLogin(request, reply, passkey.userId);
   });
 
-  if (env.googleEnabled) {
-    const googleConfig = {
-      clientId: env.GOOGLE_CLIENT_ID!,
-      clientSecret: env.GOOGLE_CLIENT_SECRET!,
-      redirectUri: `${env.PUBLIC_API_URL}/api/auth/google/callback`,
+  const oidc = env.oidc;
+
+  if (oidc) {
+    const oidcConfig = {
+      issuer: oidc.issuer,
+      clientId: oidc.clientId,
+      clientSecret: oidc.clientSecret,
+      scopes: oidc.scopes,
+      redirectUri: `${env.PUBLIC_API_URL}/api/auth/oidc/callback`,
     };
 
-    app.get('/google/start', async (_request, reply) => {
-      const authorization = createAuthorizationRequest(googleConfig);
+    function loginError(reason: string): string {
+      return `${env.PUBLIC_WEB_URL}/login?error=${reason}`;
+    }
+
+    app.get('/oidc/start', async (request, reply) => {
+      let authorization;
+
+      try {
+        authorization = await createAuthorizationRequest(oidcConfig);
+      } catch (error) {
+        request.log.error({ err: error }, 'Could not start the single sign-on flow');
+        return reply.redirect(loginError('sso_unavailable'));
+      }
 
       reply.setCookie(
         OAUTH_STATE_COOKIE,
@@ -318,35 +333,42 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
       return reply.redirect(authorization.url);
     });
 
-    app.get('/google/callback', async (request, reply) => {
+    app.get('/oidc/callback', async (request, reply) => {
       const query = request.query as { code?: string; state?: string; error?: string };
       const raw = request.cookies[OAUTH_STATE_COOKIE];
 
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api/auth' });
 
       if (query.error || !query.code || !query.state || !raw) {
-        return reply.redirect(`${env.PUBLIC_WEB_URL}/login?error=google`);
+        return reply.redirect(loginError('sso'));
       }
 
       const stored = JSON.parse(raw) as {
         state: string;
-        codeVerifier: string;
+        codeVerifier: string | null;
         nonce: string;
       };
 
       if (stored.state !== query.state) {
-        return reply.redirect(`${env.PUBLIC_WEB_URL}/login?error=google_state`);
+        return reply.redirect(loginError('sso_state'));
       }
 
-      const profile = await exchangeAuthorizationCode(
-        googleConfig,
-        query.code,
-        stored.codeVerifier,
-        stored.nonce,
-      );
+      let profile;
+
+      try {
+        profile = await exchangeAuthorizationCode(
+          oidcConfig,
+          query.code,
+          stored.codeVerifier,
+          stored.nonce,
+        );
+      } catch (error) {
+        request.log.error({ err: error }, 'Single sign-on failed');
+        return reply.redirect(loginError('sso'));
+      }
 
       if (!profile.emailVerified) {
-        return reply.redirect(`${env.PUBLIC_WEB_URL}/login?error=google_unverified`);
+        return reply.redirect(loginError('sso_unverified'));
       }
 
       const [linked] = await db
@@ -354,7 +376,7 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
         .from(schema.oauthAccounts)
         .where(
           and(
-            eq(schema.oauthAccounts.provider, 'google'),
+            eq(schema.oauthAccounts.provider, profile.issuer),
             eq(schema.oauthAccounts.providerAccountId, profile.subject),
           ),
         )
@@ -369,7 +391,7 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
           userId = existing.id;
         } else {
           if (!env.ALLOW_REGISTRATION) {
-            return reply.redirect(`${env.PUBLIC_WEB_URL}/login?error=registration_disabled`);
+            return reply.redirect(loginError('registration_disabled'));
           }
 
           const displayName = profile.name ?? profile.email.split('@')[0]!;
@@ -384,14 +406,14 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
             })
             .returning({ id: schema.users.id });
 
-          if (!created) throw new Error('Failed to create user from Google profile');
+          if (!created) throw new Error('Failed to create a user from the sign-on profile');
           userId = created.id;
           await createWorkspace(db, userId, `${displayName}'s workspace`, 'personal');
         }
 
         await db.insert(schema.oauthAccounts).values({
           userId,
-          provider: 'google',
+          provider: profile.issuer,
           providerAccountId: profile.subject,
         });
       }

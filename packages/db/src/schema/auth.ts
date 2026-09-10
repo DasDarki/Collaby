@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { oauthProviderEnum, webauthnChallengeKindEnum } from './enums.js';
+import { webauthnChallengeKindEnum } from './enums.js';
 
 export const users = pgTable(
   'users',
@@ -50,7 +50,7 @@ export const oauthAccounts = pgTable(
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: oauthProviderEnum().notNull(),
+    provider: text().notNull(),
     providerAccountId: text().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },

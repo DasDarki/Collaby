@@ -73,8 +73,10 @@ Three ways in, one session model behind them.
 - **Password** with Argon2id.
 - **Passkeys**, discoverable so no username is needed. The label exists only to tell
   entries apart in the account list.
-- **Google OAuth**, optional, implemented directly against Google's endpoints with PKCE
-  and ID token verification through their JWKS.
+- **Single sign-on** through any OpenID Connect provider, optional. Collaby reads the
+  provider's discovery document to find its endpoints, uses the authorization code flow
+  with PKCE where the provider advertises support, and verifies the returned ID token
+  against the provider's JWKS, checking issuer, audience and the nonce it sent.
 
 Password sign-in can be followed by a TOTP challenge. Recovery codes are single use and
 stored as hashes.
@@ -90,6 +92,11 @@ is revoked.
 
 Because rotation is destructive, the browser client funnels all refreshes through a single
 in-flight promise so parallel requests cannot race each other into a false theft alarm.
+
+An external identity is stored as the pair the OIDC spec makes unique: `oauth_accounts`
+holds the provider's issuer URL alongside the subject claim, rather than a fixed provider
+name. Swapping identity providers therefore cannot make two different people collide on
+the same subject string.
 
 ## Storage
 

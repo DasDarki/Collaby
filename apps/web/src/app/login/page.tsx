@@ -28,19 +28,28 @@ function LoginForm() {
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<'password' | 'passkey' | 'code' | null>(null);
-  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [ssoName, setSsoName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (params.get('error')) {
-      setError('Google sign in did not complete. Try again or use your password.');
-    }
+    const reason = params.get('error');
+    if (!reason) return;
+
+    setError(
+      reason === 'sso_unverified'
+        ? 'Your identity provider has not verified that email address yet.'
+        : reason === 'registration_disabled'
+          ? 'This instance is not accepting new accounts.'
+          : reason === 'sso_unavailable'
+            ? 'Single sign-on is not reachable right now. Try again or use your password.'
+            : 'Single sign-on did not complete. Try again or use your password.',
+    );
   }, [params]);
 
   useEffect(() => {
     api
-      .get<{ google: boolean }>('/api/auth/providers', { skipAuthRefresh: true })
-      .then((providers) => setGoogleEnabled(providers.google))
-      .catch(() => setGoogleEnabled(false));
+      .get<{ oidc: { name: string } | null }>('/api/auth/providers', { skipAuthRefresh: true })
+      .then((providers) => setSsoName(providers.oidc?.name ?? null))
+      .catch(() => setSsoName(null));
   }, []);
 
   async function finish(result: AuthResult) {
@@ -215,14 +224,14 @@ function LoginForm() {
           Continue with a passkey
         </Button>
 
-        {googleEnabled ? (
+        {ssoName ? (
           <Button
             variant="outline"
             onClick={() => {
-              window.location.href = `${api.baseUrl}/api/auth/google/start`;
+              window.location.href = `${api.baseUrl}/api/auth/oidc/start`;
             }}
           >
-            Continue with Google
+            Continue with {ssoName}
           </Button>
         ) : null}
       </div>

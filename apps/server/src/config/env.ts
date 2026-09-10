@@ -37,6 +37,12 @@ const envSchema = z.object({
   WEBAUTHN_RP_NAME: z.string().default('Collaby'),
   WEBAUTHN_RP_ID: optionalString,
 
+  OIDC_ISSUER: optionalString,
+  OIDC_CLIENT_ID: optionalString,
+  OIDC_CLIENT_SECRET: optionalString,
+  OIDC_SCOPES: z.string().default('openid email profile'),
+  OIDC_PROVIDER_NAME: optionalString,
+
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
 
@@ -59,14 +65,61 @@ const envSchema = z.object({
     .default(25 * 1024 * 1024),
 });
 
+export interface OidcSettings {
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  scopes: string;
+  name: string;
+}
+
 export type Env = z.infer<typeof envSchema> & {
   webauthnRpId: string;
   webauthnOrigins: string[];
-  googleEnabled: boolean;
+  oidc: OidcSettings | null;
   isProduction: boolean;
   cookieSameSite: 'lax' | 'strict' | 'none';
   cookieSecure: boolean;
 };
+
+type RawEnv = z.infer<typeof envSchema>;
+
+function displayNameFor(issuer: string, configured: string | undefined): string {
+  if (configured) return configured;
+
+  try {
+    const host = new URL(issuer).hostname;
+    if (host.endsWith('accounts.google.com')) return 'Google';
+    const label = host.split('.')[0] ?? host;
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  } catch {
+    return 'Single sign-on';
+  }
+}
+
+function resolveOidc(env: RawEnv): OidcSettings | null {
+  if (env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET) {
+    return {
+      issuer: env.OIDC_ISSUER.replace(/\/+$/, ''),
+      clientId: env.OIDC_CLIENT_ID,
+      clientSecret: env.OIDC_CLIENT_SECRET,
+      scopes: env.OIDC_SCOPES,
+      name: displayNameFor(env.OIDC_ISSUER, env.OIDC_PROVIDER_NAME),
+    };
+  }
+
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    return {
+      issuer: 'https://accounts.google.com',
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      scopes: env.OIDC_SCOPES,
+      name: env.OIDC_PROVIDER_NAME ?? 'Google',
+    };
+  }
+
+  return null;
+}
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = envSchema.safeParse(source);
@@ -83,6 +136,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const apiUrl = new URL(env.PUBLIC_API_URL);
   const origins = new Set([webUrl.origin]);
 
+  const oidc = resolveOidc(env);
+
   const crossSite = webUrl.origin !== apiUrl.origin;
   const cookieSameSite = env.COOKIE_SAME_SITE ?? (crossSite ? 'none' : 'lax');
 
@@ -90,7 +145,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ...env,
     webauthnRpId: env.WEBAUTHN_RP_ID || webUrl.hostname,
     webauthnOrigins: [...origins],
-    googleEnabled: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    oidc,
     isProduction: env.NODE_ENV === 'production',
     cookieSameSite,
     cookieSecure: cookieSameSite === 'none' || apiUrl.protocol === 'https:',
