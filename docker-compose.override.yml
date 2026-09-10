@@ -1,0 +1,10 @@
+# Publishes the proxy on a host port for running Collaby with plain docker compose.
+#
+# Compose merges this file automatically. Platforms that pass an explicit -f, such as
+# Coolify, ignore it and reach the proxy over the Docker network instead, which is why
+# docker-compose.yml itself never binds a host port.
+
+services:
+  proxy:
+    ports:
+      - '${PUBLIC_PORT:-8080}:8080'

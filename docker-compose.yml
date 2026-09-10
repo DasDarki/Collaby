@@ -66,8 +66,8 @@ services:
     depends_on:
       - web
       - server
-    ports:
-      - '${PUBLIC_PORT:-8080}:8080'
+    expose:
+      - '8080'
     volumes:
       - collaby-caddy:/data
 

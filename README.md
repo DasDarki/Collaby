@@ -93,8 +93,8 @@ the provider has not verified, so nobody can take over an account by claiming it
 
 ## Deploying
 
-The compose file serves everything from one domain through Caddy, which keeps
-cookies same-site and makes passkeys work without extra configuration.
+Everything is served from one domain through a small Caddy container, which keeps cookies
+same-site and makes passkeys work without extra configuration.
 
 ```bash
 cp .env.example .env
@@ -102,20 +102,28 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-The API applies its own database migrations on start.
-
-**Coolify:** point it at this repository, choose _Docker Compose_, and set
-`POSTGRES_PASSWORD`, `JWT_SECRET`, `SECRET_ENCRYPTION_KEY` and `PUBLIC_WEB_URL` as
-environment variables. Route the domain to the `proxy` service on port 8080. If port 8080
-is already taken on that host, set `PUBLIC_PORT` to something free.
+That publishes the proxy on port 8080; set `PUBLIC_PORT` to move it. The API applies its
+own database migrations on start.
 
 Two named volumes hold state worth backing up: `collaby-postgres` and `collaby-data`
 (git repositories and uploaded images).
 
-The proxy configuration is baked into its image rather than bind mounted, because Coolify
-runs compose from a different directory than the one it checks the repository out into.
-A relative bind mount of a file would be created there as an empty directory and the
-container would refuse to start. Edit `deploy/Caddyfile` and redeploy to change it.
+### Coolify
+
+Point it at this repository, choose _Docker Compose_, and set `POSTGRES_PASSWORD`,
+`JWT_SECRET`, `SECRET_ENCRYPTION_KEY` and `PUBLIC_WEB_URL`. Give the `proxy` service your
+domain and port `8080`.
+
+No host port is involved: Coolify's own proxy reaches the container over the Docker
+network, so `docker-compose.yml` only exposes 8080 rather than binding it. The host
+binding lives in `docker-compose.override.yml`, which Compose merges automatically for a
+plain `docker compose up` but which Coolify ignores, because it passes an explicit `-f`.
+
+The Caddy configuration is baked into the proxy image rather than bind mounted, for a
+related reason: Coolify runs compose from a different directory than the one it checks the
+repository out into, so a relative bind mount of a file would be created there as an empty
+directory and the container would refuse to start. Edit `deploy/Caddyfile` and redeploy to
+change it.
 
 ## Layout
 
