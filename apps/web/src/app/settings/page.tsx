@@ -1,13 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { startRegistration } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/browser';
 import type { PasskeySummary, SessionDevice } from '@collaby/shared';
-import { ArrowLeft, KeyRound, LogOut, Monitor, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ImagePlus,
+  KeyRound,
+  Link2,
+  LogOut,
+  Monitor,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import { AuthGate } from '@/components/auth-gate';
+import { QrCode } from '@/components/qr-code';
 import { Avatar, Banner, Button, Field, Input, Spinner } from '@/components/ui';
 import { ApiRequestError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -37,6 +47,14 @@ function Section({
   );
 }
 
+interface Identity {
+  id: string;
+  provider: string;
+  name: string;
+  isCurrentProvider: boolean;
+  createdAt: string;
+}
+
 function relativeTime(iso: string): string {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (minutes < 1) return 'just now';
@@ -48,6 +66,7 @@ function relativeTime(iso: string): string {
 
 function SettingsContent() {
   const router = useRouter();
+  const params = useSearchParams();
   const { user, refreshAccount, signOut } = useSession();
 
   const [sessions, setSessions] = useState<SessionDevice[]>([]);
@@ -55,6 +74,9 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const [identities, setIdentities] = useState<Identity[]>([]);
+  const [ssoName, setSsoName] = useState<string | null>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const [passkeyLabel, setPasskeyLabel] = useState('');
   const [totpSetup, setTotpSetup] = useState<{ secret: string; provisioningUri: string } | null>(
     null,
@@ -63,17 +85,61 @@ function SettingsContent() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {
-    const [deviceList, passkeyList] = await Promise.all([
+    const [deviceList, passkeyList, identityList, providers] = await Promise.all([
       api.get<SessionDevice[]>('/api/account/sessions'),
       api.get<PasskeySummary[]>('/api/account/passkeys'),
+      api.get<Identity[]>('/api/account/identities'),
+      api.get<{ oidc: { name: string } | null }>('/api/auth/providers'),
     ]);
     setSessions(deviceList);
     setPasskeys(passkeyList);
+    setIdentities(identityList);
+    setSsoName(providers.oidc?.name ?? null);
   }, []);
 
   useEffect(() => {
     void load().catch(() => setError('Could not load your account settings.'));
   }, [load]);
+
+  useEffect(() => {
+    const failure = params.get('error');
+    if (failure === 'sso_taken') {
+      setError('That identity is already connected to a different Collaby account.');
+    }
+  }, [params]);
+
+  async function uploadAvatar(file: File) {
+    setError(null);
+    setBusy(true);
+
+    try {
+      await api.upload<{ avatarUrl: string }>('/api/account/avatar', file);
+      await refreshAccount();
+    } catch (cause) {
+      setError(cause instanceof ApiRequestError ? cause.message : 'Could not set that picture.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    setError(null);
+    await api.delete('/api/account/avatar');
+    await refreshAccount();
+  }
+
+  async function connectIdentity() {
+    setError(null);
+
+    try {
+      const { url } = await api.post<{ url: string }>('/api/auth/oidc/link');
+      window.location.href = url;
+    } catch (cause) {
+      setError(
+        cause instanceof ApiRequestError ? cause.message : 'Could not reach the identity provider.',
+      );
+    }
+  }
 
   async function addPasskey(event: React.FormEvent) {
     event.preventDefault();
@@ -158,12 +224,52 @@ function SettingsContent() {
       </Link>
 
       <header className="mb-7 flex items-center gap-3">
-        {user ? (
-          <Avatar name={user.displayName} color={user.avatarColor} url={user.avatarUrl} size={38} />
-        ) : null}
+        <div className="group relative">
+          {user ? (
+            <Avatar
+              name={user.displayName}
+              color={user.avatarColor}
+              url={user.avatarUrl}
+              size={48}
+            />
+          ) : null}
+
+          <button
+            type="button"
+            aria-label="Change your picture"
+            title="Change your picture"
+            disabled={busy}
+            onClick={() => avatarInput.current?.click()}
+            className="absolute inset-0 flex items-center justify-center rounded-full bg-night-900/70 text-moon opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <ImagePlus size={16} />
+          </button>
+
+          <input
+            ref={avatarInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (file) void uploadAvatar(file);
+            }}
+          />
+        </div>
+
         <div>
           <h1 className="text-[15px] font-medium text-moon">{user?.displayName}</h1>
           <p className="text-[12.5px] text-dusk">{user?.email}</p>
+          {user?.avatarUrl ? (
+            <button
+              type="button"
+              onClick={() => void removeAvatar()}
+              className="mt-0.5 text-[11.5px] text-dusk hover:text-alarm"
+            >
+              Remove picture
+            </button>
+          ) : null}
         </div>
         <Button
           variant="outline"
@@ -277,22 +383,80 @@ function SettingsContent() {
             </ul>
           ) : null}
 
-          <form onSubmit={addPasskey} className="flex items-end gap-2">
-            <div className="flex-1">
-              <Field label="Name this passkey" hint="Only used to tell them apart in this list.">
-                <Input
-                  value={passkeyLabel}
-                  onChange={(event) => setPasskeyLabel(event.target.value)}
-                  placeholder="Work laptop"
-                />
-              </Field>
+          <form onSubmit={addPasskey} className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-dusk">
+              Name this passkey
+            </span>
+            <div className="flex gap-2">
+              <Input
+                value={passkeyLabel}
+                onChange={(event) => setPasskeyLabel(event.target.value)}
+                placeholder="Work laptop"
+                className="flex-1"
+              />
+              <Button type="submit" variant="primary" disabled={busy} className="shrink-0">
+                {busy ? <Spinner /> : null}
+                Add passkey
+              </Button>
             </div>
-            <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? <Spinner /> : null}
-              Add passkey
-            </Button>
+            <span className="text-[12px] text-dusk">
+              Only used to tell them apart in this list.
+            </span>
           </form>
         </Section>
+
+        {ssoName || identities.length > 0 ? (
+          <Section
+            title="Connected accounts"
+            description={`Sign in with ${ssoName ?? 'your identity provider'} instead of a password.`}
+            icon={<Link2 size={15} />}
+          >
+            {identities.length > 0 ? (
+              <ul className="mb-3 space-y-1.5">
+                {identities.map((identity) => (
+                  <li
+                    key={identity.id}
+                    className="flex items-center gap-3 rounded-lg border border-night-600 bg-night-800 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] text-moon">{identity.name}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-dusk">
+                        connected {relativeTime(identity.createdAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Disconnect ${identity.name}`}
+                      onClick={async () => {
+                        setError(null);
+                        try {
+                          await api.delete(`/api/account/identities/${identity.id}`);
+                          await load();
+                        } catch (cause) {
+                          setError(
+                            cause instanceof ApiRequestError
+                              ? cause.message
+                              : 'Could not disconnect that account.',
+                          );
+                        }
+                      }}
+                      className="flex h-7 w-7 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-alarm"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {ssoName && !identities.some((identity) => identity.isCurrentProvider) ? (
+              <Button variant="outline" onClick={connectIdentity}>
+                <Link2 size={13} />
+                Connect {ssoName}
+              </Button>
+            ) : null}
+          </Section>
+        ) : null}
 
         <Section
           title="Two-factor authentication"
@@ -333,11 +497,21 @@ function SettingsContent() {
           ) : totpSetup ? (
             <form onSubmit={enableTwoFactor} className="flex flex-col gap-3">
               <p className="text-[12.5px] leading-relaxed text-haze">
-                Add this secret to your authenticator app, then enter the code it shows.
+                Scan this with your authenticator app, then enter the code it shows.
               </p>
-              <code className="block break-all rounded-md border border-night-600 bg-night-900 px-3 py-2 font-mono text-[12.5px] text-lull-300">
-                {totpSetup.secret}
-              </code>
+
+              <div className="flex flex-wrap items-start gap-4">
+                <QrCode value={totpSetup.provisioningUri} />
+
+                <div className="min-w-[180px] flex-1">
+                  <p className="text-[12px] text-dusk">
+                    Cannot scan? Enter this key by hand instead.
+                  </p>
+                  <code className="mt-1.5 block break-all rounded-md border border-night-600 bg-night-900 px-3 py-2 font-mono text-[12.5px] text-lull-300">
+                    {totpSetup.secret}
+                  </code>
+                </div>
+              </div>
 
               <div className="flex items-end gap-2">
                 <div className="flex-1">
@@ -371,7 +545,15 @@ function SettingsContent() {
 export default function SettingsPage() {
   return (
     <AuthGate>
-      <SettingsContent />
+      <Suspense
+        fallback={
+          <main className="flex min-h-dvh items-center justify-center">
+            <Spinner />
+          </main>
+        }
+      >
+        <SettingsContent />
+      </Suspense>
     </AuthGate>
   );
 }

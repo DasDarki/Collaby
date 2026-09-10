@@ -111,34 +111,37 @@ function MembersContent({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {canInvite ? (
-        <form onSubmit={invite} className="mb-6 flex items-end gap-2">
-          <div className="flex-1">
-            <Field label="Add someone" hint="They need a Collaby account already.">
-              <Input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="name@example.com"
-                required
-              />
-            </Field>
+        <form onSubmit={invite} className="mb-6 flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-dusk">
+            Add someone
+          </span>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@example.com"
+              className="flex-1"
+              required
+            />
+            <select
+              value={role}
+              aria-label="Role for the new member"
+              onChange={(event) => setRole(event.target.value as AccessRole)}
+              className="h-9 rounded-md border border-night-600 bg-night-850 px-2 text-[12.5px] text-moon hover:border-night-500 focus:border-lull-400 focus:outline-none"
+            >
+              {MEMBER_ROLES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="primary" disabled={busy} className="shrink-0">
+              {busy ? <Spinner /> : <UserPlus size={13} />}
+              Add
+            </Button>
           </div>
-          <select
-            value={role}
-            aria-label="Role for the new member"
-            onChange={(event) => setRole(event.target.value as AccessRole)}
-            className="h-9 rounded-md border border-night-600 bg-night-850 px-2 text-[12.5px] text-moon hover:border-night-500 focus:border-lull-400 focus:outline-none"
-          >
-            {MEMBER_ROLES.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <Button type="submit" variant="primary" disabled={busy}>
-            {busy ? <Spinner /> : <UserPlus size={13} />}
-            Add
-          </Button>
+          <span className="text-[12px] text-dusk">They need a Collaby account already.</span>
         </form>
       ) : null}
 

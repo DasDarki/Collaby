@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { AuthResult } from '@collaby/shared';
@@ -18,6 +18,14 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [ssoName, setSsoName] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<{ oidc: { name: string } | null }>('/api/auth/providers', { skipAuthRefresh: true })
+      .then((providers) => setSsoName(providers.oidc?.name ?? null))
+      .catch(() => setSsoName(null));
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -90,6 +98,26 @@ export default function RegisterPage() {
           Create account
         </Button>
       </form>
+
+      {ssoName ? (
+        <>
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-dusk">
+            <span className="h-px flex-1 bg-night-600" />
+            or
+            <span className="h-px flex-1 bg-night-600" />
+          </div>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              window.location.href = `${api.baseUrl}/api/auth/oidc/start`;
+            }}
+          >
+            Continue with {ssoName}
+          </Button>
+        </>
+      ) : null}
     </AuthShell>
   );
 }

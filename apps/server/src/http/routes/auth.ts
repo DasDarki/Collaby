@@ -15,6 +15,7 @@ import { createSession, revokeSession, rotateSession } from '../../auth/sessions
 import { hashRecoveryCode, verifyTotpCode } from '../../auth/totp.js';
 import { buildAuthenticationOptions, verifyAuthentication } from '../../auth/webauthn.js';
 import { createAuthorizationRequest, exchangeAuthorizationCode } from '../../auth/oidc.js';
+import { signLinkIntent, verifyLinkIntent } from '../../auth/link-intent.js';
 import { avatarColorFor, findUserByEmail } from '../../services/users.js';
 import { createWorkspace } from '../../services/workspaces.js';
 import {
@@ -23,7 +24,7 @@ import {
   clearRefreshCookie,
   setRefreshCookie,
 } from '../session-response.js';
-import { badRequest, forbidden, unauthorized } from '../errors.js';
+import { HttpError, badRequest, forbidden, unauthorized } from '../errors.js';
 
 const TWO_FACTOR_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -304,15 +305,8 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
       return `${env.PUBLIC_WEB_URL}/login?error=${reason}`;
     }
 
-    app.get('/oidc/start', async (request, reply) => {
-      let authorization;
-
-      try {
-        authorization = await createAuthorizationRequest(oidcConfig);
-      } catch (error) {
-        request.log.error({ err: error }, 'Could not start the single sign-on flow');
-        return reply.redirect(loginError('sso_unavailable'));
-      }
+    async function beginAuthorization(reply: FastifyReply, linkIntent: string | null) {
+      const authorization = await createAuthorizationRequest(oidcConfig);
 
       reply.setCookie(
         OAUTH_STATE_COOKIE,
@@ -320,6 +314,7 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
           state: authorization.state,
           codeVerifier: authorization.codeVerifier,
           nonce: authorization.nonce,
+          linkIntent,
         }),
         {
           httpOnly: true,
@@ -330,7 +325,36 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
         },
       );
 
-      return reply.redirect(authorization.url);
+      return authorization.url;
+    }
+
+    app.post('/oidc/link', async (request, reply) => {
+      const auth = app.requireAuth(request);
+      const intent = await signLinkIntent(env.JWT_SECRET, auth.userId);
+
+      try {
+        return { url: await beginAuthorization(reply, intent) };
+      } catch (error) {
+        request.log.error({ err: error }, 'Could not start the identity link flow');
+        throw new HttpError(
+          502,
+          'sso_unavailable',
+          'The identity provider is not reachable right now.',
+        );
+      }
+    });
+
+    app.get('/oidc/start', async (request, reply) => {
+      let authorization;
+
+      try {
+        authorization = await beginAuthorization(reply, null);
+      } catch (error) {
+        request.log.error({ err: error }, 'Could not start the single sign-on flow');
+        return reply.redirect(loginError('sso_unavailable'));
+      }
+
+      return reply.redirect(authorization);
     });
 
     app.get('/oidc/callback', async (request, reply) => {
@@ -347,6 +371,7 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
         state: string;
         codeVerifier: string | null;
         nonce: string;
+        linkIntent?: string | null;
       };
 
       if (stored.state !== query.state) {
@@ -369,6 +394,35 @@ export default async function authRoutes(app: FastifyInstance, context: AppConte
 
       if (!profile.emailVerified) {
         return reply.redirect(loginError('sso_unverified'));
+      }
+
+      const linkingUserId = await verifyLinkIntent(env.JWT_SECRET, stored.linkIntent);
+
+      if (linkingUserId) {
+        const [claimed] = await db
+          .select({ userId: schema.oauthAccounts.userId })
+          .from(schema.oauthAccounts)
+          .where(
+            and(
+              eq(schema.oauthAccounts.provider, profile.issuer),
+              eq(schema.oauthAccounts.providerAccountId, profile.subject),
+            ),
+          )
+          .limit(1);
+
+        if (claimed && claimed.userId !== linkingUserId) {
+          return reply.redirect(`${env.PUBLIC_WEB_URL}/settings?error=sso_taken`);
+        }
+
+        if (!claimed) {
+          await db.insert(schema.oauthAccounts).values({
+            userId: linkingUserId,
+            provider: profile.issuer,
+            providerAccountId: profile.subject,
+          });
+        }
+
+        return reply.redirect(`${env.PUBLIC_WEB_URL}/settings?linked=sso`);
       }
 
       const [linked] = await db

@@ -6,6 +6,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from 'react';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 type ButtonVariant = 'primary' | 'ghost' | 'outline' | 'danger';
@@ -103,6 +104,8 @@ export function Avatar({
   size?: number;
   ring?: boolean;
 }) {
+  const source = url ? api.resolveAssetUrl(url) : null;
+
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
@@ -119,14 +122,14 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        backgroundColor: url ? undefined : color,
+        backgroundColor: source ? undefined : color,
         color: '#14161f',
         fontSize: Math.max(9, Math.round(size * 0.4)),
       }}
     >
-      {url ? (
+      {source ? (
         <img
-          src={url}
+          src={source}
           alt={name}
           width={size}
           height={size}

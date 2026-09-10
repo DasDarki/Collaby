@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { eq, schema } from '@collaby/db';
 import type { AppContext } from '../../context.js';
 import { randomToken } from '../../auth/crypto.js';
+import { openAvatar } from '../../services/avatars.js';
 import { requireDocumentAccess } from '../guards.js';
 import { badRequest, notFound } from '../errors.js';
 
@@ -71,6 +72,20 @@ export default async function assetRoutes(
       filename: upload.filename,
       byteSize: buffer.byteLength,
     };
+  });
+
+  app.get('/avatars/:key', async (request, reply) => {
+    const { key } = assetParamSchema.parse(request.params);
+
+    const avatar = await openAvatar(env.DATA_DIR, key);
+    if (!avatar) throw notFound('Avatar not found');
+
+    reply
+      .header('content-type', avatar.mimeType)
+      .header('content-length', String(avatar.size))
+      .header('cache-control', 'private, max-age=31536000, immutable');
+
+    return reply.send(avatar.stream);
   });
 
   app.get('/assets/:key', async (request, reply) => {

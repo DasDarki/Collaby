@@ -21,7 +21,15 @@ import {
   verifyTotpCode,
 } from '../../auth/totp.js';
 import { buildRegistrationOptions, verifyRegistration } from '../../auth/webauthn.js';
-import { badRequest, notFound, unauthorized } from '../errors.js';
+import { badRequest, forbidden, notFound, unauthorized } from '../errors.js';
+import { randomToken } from '../../auth/crypto.js';
+import {
+  AVATAR_MIME_TYPES,
+  MAX_AVATAR_BYTES,
+  avatarKeyFromUrl,
+  removeAvatar,
+  writeAvatar,
+} from '../../services/avatars.js';
 
 const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -147,6 +155,122 @@ export default async function accountRoutes(
     const revoked = await revokeAllSessions(db, auth.userId);
     reply.code(200);
     return { revoked };
+  });
+
+  app.get('/identities', async (request) => {
+    const auth = app.requireAuth(request);
+
+    const rows = await db
+      .select({
+        id: schema.oauthAccounts.id,
+        provider: schema.oauthAccounts.provider,
+        createdAt: schema.oauthAccounts.createdAt,
+      })
+      .from(schema.oauthAccounts)
+      .where(eq(schema.oauthAccounts.userId, auth.userId))
+      .orderBy(schema.oauthAccounts.createdAt);
+
+    return rows.map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      name: row.provider === env.oidc?.issuer ? env.oidc.name : row.provider,
+      isCurrentProvider: row.provider === env.oidc?.issuer,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  });
+
+  app.delete('/identities/:id', async (request, reply) => {
+    const auth = app.requireAuth(request);
+    const { id } = idParamSchema.parse(request.params);
+
+    const [user] = await db
+      .select({ passwordHash: schema.users.passwordHash })
+      .from(schema.users)
+      .where(eq(schema.users.id, auth.userId))
+      .limit(1);
+
+    const passkeyCount = await db
+      .select({ id: schema.passkeys.id })
+      .from(schema.passkeys)
+      .where(eq(schema.passkeys.userId, auth.userId));
+
+    const identities = await db
+      .select({ id: schema.oauthAccounts.id })
+      .from(schema.oauthAccounts)
+      .where(eq(schema.oauthAccounts.userId, auth.userId));
+
+    const remainingWays =
+      (user?.passwordHash ? 1 : 0) + passkeyCount.length + (identities.length - 1);
+
+    if (remainingWays < 1) {
+      throw forbidden(
+        'This is your only way to sign in. Set a password or add a passkey before removing it.',
+      );
+    }
+
+    const removed = await db
+      .delete(schema.oauthAccounts)
+      .where(and(eq(schema.oauthAccounts.id, id), eq(schema.oauthAccounts.userId, auth.userId)))
+      .returning({ id: schema.oauthAccounts.id });
+
+    if (removed.length === 0) throw notFound('That sign-in method is not connected');
+
+    reply.code(204);
+    return null;
+  });
+
+  app.post('/avatar', async (request, reply) => {
+    const auth = app.requireAuth(request);
+
+    const upload = await request.file({ limits: { fileSize: MAX_AVATAR_BYTES } });
+    if (!upload) throw badRequest('No image was uploaded');
+
+    const extension = AVATAR_MIME_TYPES.get(upload.mimetype);
+    if (!extension) throw badRequest('Upload a PNG, JPEG, WebP or GIF image');
+
+    const buffer = await upload.toBuffer();
+    if (buffer.byteLength === 0) throw badRequest('The uploaded image is empty');
+
+    const [current] = await db
+      .select({ avatarUrl: schema.users.avatarUrl })
+      .from(schema.users)
+      .where(eq(schema.users.id, auth.userId))
+      .limit(1);
+
+    const key = randomToken(24);
+    await writeAvatar(env.DATA_DIR, key, extension, buffer);
+    await removeAvatar(env.DATA_DIR, current?.avatarUrl ?? null);
+
+    const avatarUrl = `/api/avatars/${key}`;
+    await db
+      .update(schema.users)
+      .set({ avatarUrl, updatedAt: new Date() })
+      .where(eq(schema.users.id, auth.userId));
+
+    reply.code(201);
+    return { avatarUrl };
+  });
+
+  app.delete('/avatar', async (request, reply) => {
+    const auth = app.requireAuth(request);
+
+    const [current] = await db
+      .select({ avatarUrl: schema.users.avatarUrl })
+      .from(schema.users)
+      .where(eq(schema.users.id, auth.userId))
+      .limit(1);
+
+    if (avatarKeyFromUrl(current?.avatarUrl ?? null)) {
+      await removeAvatar(env.DATA_DIR, current?.avatarUrl ?? null);
+    }
+
+    await db
+      .update(schema.users)
+      .set({ avatarUrl: null, updatedAt: new Date() })
+      .where(eq(schema.users.id, auth.userId));
+
+    reply.code(204);
+    return null;
   });
 
   app.get('/passkeys', async (request) => {
