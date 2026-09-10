@@ -68,9 +68,16 @@ The API applies its own database migrations on start.
 
 **Coolify:** point it at this repository, choose _Docker Compose_, and set
 `POSTGRES_PASSWORD`, `JWT_SECRET`, `SECRET_ENCRYPTION_KEY` and `PUBLIC_WEB_URL` as
-environment variables. Route the domain to the `proxy` service on port 8080.
+environment variables. Route the domain to the `proxy` service on port 8080. If port 8080
+is already taken on that host, set `PUBLIC_PORT` to something free.
+
 Two named volumes hold state worth backing up: `collaby-postgres` and `collaby-data`
 (git repositories and uploaded images).
+
+The proxy configuration is baked into its image rather than bind mounted, because Coolify
+runs compose from a different directory than the one it checks the repository out into.
+A relative bind mount of a file would be created there as an empty directory and the
+container would refuse to start. Edit `deploy/Caddyfile` and redeploy to change it.
 
 ## Layout
 
