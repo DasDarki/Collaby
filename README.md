@@ -86,6 +86,10 @@ development keys only for testing. To offer "sign in with Google" through Auth0 
 production you still have to create your own Google OAuth client. Auth0's own database
 logins, passwordless email, and connections like GitHub have no such requirement.
 
+Collaby serves its own artwork, which saves uploading anything for the provider's login
+screen: `/logo.png` is the full 640px logo and `/logo-mark.png` the square 512px mark, both
+under your own domain.
+
 The first sign-on creates an account and a personal workspace. Later sign-ons are matched
 on the provider's issuer and subject. If an account with the same address already exists,
 the two are linked, and its password keeps working. Collaby refuses a sign-on whose email
