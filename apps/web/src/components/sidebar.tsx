@@ -3,9 +3,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, FileText, GripVertical, Plus, Search, Settings, Users } from 'lucide-react';
-import type { DocumentNode, WorkspaceSummary } from '@collaby/shared';
-import { Avatar } from '@/components/ui';
+import {
+  ChevronRight,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  GripVertical,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import type { WorkspaceSummary } from '@collaby/shared';
+import { Popover } from '@/components/popover';
+import { Avatar, Button, Input } from '@/components/ui';
 import { Wordmark } from '@/components/wordmark';
 import { cn } from '@/lib/cn';
 import {
@@ -35,32 +50,88 @@ interface DragState {
   y: number;
 }
 
+interface RowActions {
+  onToggle: (id: string) => void;
+  onCreateChild: (parentId: string, isFolder: boolean) => void;
+  onRename: (id: string, title: string) => void;
+  onDelete: (node: DocumentTreeNode) => void;
+  onNavigate?: (() => void) | undefined;
+  onDragStart: (event: React.PointerEvent, node: DocumentTreeNode) => void;
+}
+
+function MenuItem({
+  icon,
+  label,
+  danger,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px] transition-colors',
+        danger ? 'text-alarm hover:bg-alarm/10' : 'text-haze hover:bg-night-750 hover:text-moon',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function TreeRow({
   node,
   activeId,
   collapsed,
   drag,
   dropTarget,
-  onToggle,
-  onCreateChild,
-  onNavigate,
-  onDragStart,
+  renaming,
+  setRenaming,
+  actions,
 }: {
   node: DocumentTreeNode;
   activeId: string | null;
   collapsed: Set<string>;
   drag: DragState | null;
   dropTarget: DropTarget | null;
-  onToggle: (id: string) => void;
-  onCreateChild: (parentId: string) => void;
-  onNavigate?: () => void;
-  onDragStart: (event: React.PointerEvent, node: DocumentTreeNode) => void;
+  renaming: string | null;
+  setRenaming: (id: string | null) => void;
+  actions: RowActions;
 }) {
   const isOpen = !collapsed.has(node.id);
   const hasChildren = node.children.length > 0;
   const isActive = node.id === activeId;
   const isDragging = drag?.documentId === node.id;
   const target = dropTarget?.documentId === node.id ? dropTarget.mode : null;
+  const [draft, setDraft] = useState(node.title);
+
+  useEffect(() => {
+    if (renaming === node.id) setDraft(node.title);
+  }, [renaming, node.id, node.title]);
+
+  const icon = node.isFolder ? (
+    isOpen ? (
+      <FolderOpen size={13} />
+    ) : (
+      <Folder size={13} />
+    )
+  ) : node.icon ? (
+    <span className="text-[13px]">{node.icon}</span>
+  ) : (
+    <FileText size={13} />
+  );
+
+  function commitRename() {
+    const next = draft.trim();
+    setRenaming(null);
+    if (next.length > 0 && next !== node.title) actions.onRename(node.id, next);
+  }
 
   return (
     <>
@@ -74,17 +145,13 @@ function TreeRow({
         )}
         style={{ paddingLeft: 4 + node.depth * 12 }}
       >
-        {target === 'before' ? (
+        {target === 'before' || target === 'after' ? (
           <span
             aria-hidden
-            className="pointer-events-none absolute -top-px left-0 right-0 h-0.5 rounded-full bg-lull-400"
-            style={{ marginLeft: 4 + node.depth * 12 }}
-          />
-        ) : null}
-        {target === 'after' ? (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-lull-400"
+            className={cn(
+              'pointer-events-none absolute left-0 right-0 h-0.5 rounded-full bg-lull-400',
+              target === 'before' ? '-top-px' : '-bottom-px',
+            )}
             style={{ marginLeft: 4 + node.depth * 12 }}
           />
         ) : null}
@@ -92,7 +159,7 @@ function TreeRow({
         <button
           type="button"
           aria-label={`Reorder ${node.title}`}
-          onPointerDown={(event) => onDragStart(event, node)}
+          onPointerDown={(event) => actions.onDragStart(event, node)}
           className="flex h-5 w-3 shrink-0 cursor-grab touch-none items-center justify-center text-dusk opacity-0 transition-opacity hover:text-moon group-hover:opacity-100 active:cursor-grabbing [@media(hover:none)]:opacity-100"
         >
           <GripVertical size={11} />
@@ -101,36 +168,111 @@ function TreeRow({
         <button
           type="button"
           aria-label={isOpen ? `Collapse ${node.title}` : `Expand ${node.title}`}
-          onClick={() => onToggle(node.id)}
+          onClick={() => actions.onToggle(node.id)}
           className={cn(
             'flex h-4 w-4 shrink-0 items-center justify-center rounded text-dusk transition-transform',
-            hasChildren ? 'hover:text-moon' : 'invisible',
+            hasChildren || node.isFolder ? 'hover:text-moon' : 'invisible',
             isOpen && 'rotate-90',
           )}
         >
           <ChevronRight size={12} />
         </button>
 
-        <Link
-          href={`/d/${node.id}`}
-          onClick={onNavigate}
-          draggable={false}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px]"
-        >
-          <span className="shrink-0 text-dusk">
-            {node.icon ? <span className="text-[13px]">{node.icon}</span> : <FileText size={13} />}
-          </span>
-          <span className="truncate">{node.title}</span>
-        </Link>
+        {renaming === node.id ? (
+          <input
+            value={draft}
+            autoFocus
+            aria-label={`Rename ${node.title}`}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Escape') setRenaming(null);
+            }}
+            className="h-5 min-w-0 flex-1 rounded border border-lull-400 bg-night-900 px-1 text-[13px] text-moon outline-none"
+          />
+        ) : node.isFolder ? (
+          <button
+            type="button"
+            onClick={() => actions.onToggle(node.id)}
+            onDoubleClick={() => setRenaming(node.id)}
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px]"
+          >
+            <span className="shrink-0 text-dusk">{icon}</span>
+            <span className="truncate">{node.title}</span>
+          </button>
+        ) : (
+          <Link
+            href={`/d/${node.id}`}
+            onClick={actions.onNavigate}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              setRenaming(node.id);
+            }}
+            draggable={false}
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px]"
+          >
+            <span className="shrink-0 text-dusk">{icon}</span>
+            <span className="truncate">{node.title}</span>
+          </Link>
+        )}
 
-        <button
-          type="button"
-          aria-label={`Add a page inside ${node.title}`}
-          onClick={() => onCreateChild(node.id)}
-          className="hidden h-5 w-5 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon group-hover:flex"
+        <Popover
+          align="end"
+          className="w-[176px]"
+          trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              aria-label={`Actions for ${node.title}`}
+              onClick={toggle}
+              className={cn(
+                'h-5 w-5 shrink-0 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon',
+                open ? 'flex' : 'hidden group-hover:flex',
+              )}
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          )}
         >
-          <Plus size={12} />
-        </button>
+          {({ close }) => (
+            <div className="grid gap-0.5">
+              <MenuItem
+                icon={<Pencil size={12} />}
+                label="Rename"
+                onClick={() => {
+                  close();
+                  setRenaming(node.id);
+                }}
+              />
+              <MenuItem
+                icon={<Plus size={12} />}
+                label="Page inside"
+                onClick={() => {
+                  close();
+                  actions.onCreateChild(node.id, false);
+                }}
+              />
+              <MenuItem
+                icon={<FolderPlus size={12} />}
+                label="Folder inside"
+                onClick={() => {
+                  close();
+                  actions.onCreateChild(node.id, true);
+                }}
+              />
+              <span className="my-0.5 h-px bg-night-600" />
+              <MenuItem
+                icon={<Trash2 size={12} />}
+                label="Delete"
+                danger
+                onClick={() => {
+                  close();
+                  actions.onDelete(node);
+                }}
+              />
+            </div>
+          )}
+        </Popover>
       </div>
 
       {isOpen
@@ -142,14 +284,73 @@ function TreeRow({
               collapsed={collapsed}
               drag={drag}
               dropTarget={dropTarget}
-              onToggle={onToggle}
-              onCreateChild={onCreateChild}
-              onNavigate={onNavigate}
-              onDragStart={onDragStart}
+              renaming={renaming}
+              setRenaming={setRenaming}
+              actions={actions}
             />
           ))
         : null}
     </>
+  );
+}
+
+function NewWorkspaceDialog({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="New workspace"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-night-900/75 px-5 pt-[18vh] backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <form
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (name.trim().length === 0) return;
+          setBusy(true);
+          try {
+            await onCreate(name.trim());
+            onClose();
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="w-full max-w-[380px] rounded-xl border border-night-600 bg-night-800 p-5 shadow-2xl shadow-black/60"
+      >
+        <h2 className="text-[14px] font-medium text-moon">New workspace</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-dusk">
+          A shared space you can invite people into. Your personal workspace stays private.
+        </p>
+
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Design team"
+          aria-label="Workspace name"
+          autoFocus
+          className="mt-4"
+        />
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={busy}>
+            Create workspace
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -170,12 +371,17 @@ export function Sidebar({
     documents,
     selectWorkspace,
     createDocument,
+    renameDocument,
+    deleteDocument,
     moveDocument,
+    createWorkspace,
   } = useWorkspaces();
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
 
   const navRef = useRef<HTMLElement>(null);
   const pending = useRef<{ documentId: string; title: string; x: number; y: number } | null>(null);
@@ -187,22 +393,50 @@ export function Sidebar({
     (workspace: WorkspaceSummary) => workspace.id === activeWorkspaceId,
   );
 
-  function toggle(id: string) {
+  const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   const addDocument = useCallback(
-    async (parentId: string | null) => {
+    async (parentId: string | null, isFolder: boolean) => {
       if (!activeWorkspaceId) return;
-      const document = await createDocument({ workspaceId: activeWorkspaceId, parentId });
-      router.push(`/d/${document.id}`);
+
+      const document = await createDocument({
+        workspaceId: activeWorkspaceId,
+        parentId,
+        isFolder,
+      });
+
+      if (parentId) {
+        setCollapsed((current) => {
+          const next = new Set(current);
+          next.delete(parentId);
+          return next;
+        });
+      }
+
+      if (isFolder) setRenaming(document.id);
+      else router.push(`/d/${document.id}`);
     },
     [activeWorkspaceId, createDocument, router],
+  );
+
+  const removeDocument = useCallback(
+    async (node: DocumentTreeNode) => {
+      const label = node.isFolder ? 'folder' : 'page';
+      const extra = node.children.length > 0 ? ' and everything inside it' : '';
+
+      if (!window.confirm(`Delete the ${label} "${node.title}"${extra}?`)) return;
+
+      await deleteDocument(node.id);
+      if (activeDocumentId === node.id) router.push('/');
+    },
+    [deleteDocument, activeDocumentId, router],
   );
 
   const clearTimers = useCallback(() => {
@@ -362,6 +596,15 @@ export function Sidebar({
     };
   }, [clearTimers]);
 
+  const actions: RowActions = {
+    onToggle: toggle,
+    onCreateChild: (parentId, isFolder) => void addDocument(parentId, isFolder),
+    onRename: (id, title) => void renameDocument(id, title),
+    onDelete: (node) => void removeDocument(node),
+    onNavigate,
+    onDragStart,
+  };
+
   return (
     <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-night-600 bg-night-850">
       <div className="flex h-12 items-center justify-between px-3">
@@ -379,12 +622,12 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="px-3 pb-2">
+      <div className="flex items-center gap-1.5 px-3 pb-2">
         <select
           value={activeWorkspaceId ?? ''}
           onChange={(event) => void selectWorkspace(event.target.value)}
           aria-label="Active workspace"
-          className="h-8 w-full cursor-pointer rounded-md border border-night-600 bg-night-800 px-2 text-[12.5px] text-moon hover:border-night-500 focus:border-lull-400 focus:outline-none"
+          className="h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-night-600 bg-night-800 px-2 text-[12.5px] text-moon hover:border-night-500 focus:border-lull-400 focus:outline-none"
         >
           {workspaces.map((workspace) => (
             <option key={workspace.id} value={workspace.id}>
@@ -392,20 +635,43 @@ export function Sidebar({
             </option>
           ))}
         </select>
+
+        <button
+          type="button"
+          onClick={() => setCreatingWorkspace(true)}
+          aria-label="New workspace"
+          title="New workspace"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-night-600 text-dusk hover:border-night-500 hover:text-moon"
+        >
+          <Plus size={14} />
+        </button>
       </div>
 
       <div className="flex items-center justify-between px-4 pb-1 pt-2">
         <span className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-dusk">
           Pages
         </span>
-        <button
-          type="button"
-          onClick={() => void addDocument(null)}
-          aria-label="Add a page"
-          className="flex h-5 w-5 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon"
-        >
-          <Plus size={13} />
-        </button>
+
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => void addDocument(null, true)}
+            aria-label="New folder"
+            title="New folder"
+            className="flex h-5 w-5 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon"
+          >
+            <FolderPlus size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void addDocument(null, false)}
+            aria-label="New page"
+            title="New page"
+            className="flex h-5 w-5 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon"
+          >
+            <Plus size={13} />
+          </button>
+        </div>
       </div>
 
       <nav ref={navRef} className="flex-1 overflow-y-auto px-2 pb-3">
@@ -422,10 +688,9 @@ export function Sidebar({
               collapsed={collapsed}
               drag={drag}
               dropTarget={dropTarget}
-              onToggle={toggle}
-              onCreateChild={(parentId) => void addDocument(parentId)}
-              onNavigate={onNavigate}
-              onDragStart={onDragStart}
+              renaming={renaming}
+              setRenaming={setRenaming}
+              actions={actions}
             />
           ))
         )}
@@ -458,6 +723,15 @@ export function Sidebar({
           <Settings size={13} className="shrink-0 text-dusk" />
         </Link>
       </div>
+
+      {creatingWorkspace ? (
+        <NewWorkspaceDialog
+          onClose={() => setCreatingWorkspace(false)}
+          onCreate={async (name) => {
+            await createWorkspace(name);
+          }}
+        />
+      ) : null}
 
       {drag ? (
         <div

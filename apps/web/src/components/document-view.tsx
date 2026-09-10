@@ -105,6 +105,18 @@ export function DocumentView({
     setDetail({ ...detail, title: title.trim() });
   }, [detail, title, renameDocument]);
 
+  const adoptHeadingTitle = useCallback(
+    (heading: string) => {
+      setDetail((current) => {
+        if (!current || current.title === heading) return current;
+        void renameDocument(current.id, heading);
+        setTitle(heading);
+        return { ...current, title: heading };
+      });
+    },
+    [renameDocument],
+  );
+
   if (error) {
     return (
       <main className="flex min-h-dvh items-center justify-center px-6">
@@ -182,7 +194,9 @@ export function DocumentView({
               }}
               disabled={!canEdit}
               aria-label="Page title"
-              className="w-full truncate bg-transparent text-[14px] font-medium text-moon outline-none placeholder:text-dusk disabled:cursor-default"
+              placeholder="Untitled"
+              title={canEdit ? 'Click to rename this page' : undefined}
+              className="w-[calc(100%+12px)] -mx-1.5 truncate rounded-md bg-transparent px-1.5 py-1 text-[14px] font-medium text-moon outline-none transition-colors placeholder:text-dusk hover:bg-night-750 focus:bg-night-800 focus:ring-1 focus:ring-lull-400/60 disabled:cursor-default disabled:hover:bg-transparent"
             />
           </div>
 
@@ -266,6 +280,7 @@ export function DocumentView({
               setPanel('comments');
             }}
             onNavigate={(target) => router.push(`/d/${target}`)}
+            onHeadingTitle={adoptHeadingTitle}
           />
         </div>
       </div>

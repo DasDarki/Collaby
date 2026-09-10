@@ -68,6 +68,7 @@ export const createDocumentSchema = z.object({
   workspaceId: z.string().uuid(),
   parentId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).max(200).default('Untitled'),
+  isFolder: z.boolean().default(false),
 });
 
 export const renameDocumentSchema = z.object({

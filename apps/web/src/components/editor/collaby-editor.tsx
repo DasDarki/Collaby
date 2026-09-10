@@ -31,6 +31,7 @@ export interface CollabyEditorProps {
   onCommentRequest: (anchorId: string, quotedText: string) => void;
   onCommentSelect: (anchorId: string) => void;
   onNavigate: (documentId: string) => void;
+  onHeadingTitle: (title: string) => void;
 }
 
 export function CollabyEditor({
@@ -45,10 +46,16 @@ export function CollabyEditor({
   onCommentRequest,
   onCommentSelect,
   onNavigate,
+  onHeadingTitle,
 }: CollabyEditorProps) {
   const [externalHref, setExternalHref] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const headingTimer = useRef<number | null>(null);
+  const lastHeading = useRef<string | null>(null);
+  const onHeadingTitleRef = useRef(onHeadingTitle);
+
+  onHeadingTitleRef.current = onHeadingTitle;
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [railMarks, setRailMarks] = useState<RailMark[]>([]);
 
@@ -99,6 +106,21 @@ export function CollabyEditor({
       extensions,
       editable,
       immediatelyRender: false,
+      onUpdate({ editor: instance }) {
+        if (!instance.isEditable || !instance.isFocused) return;
+
+        const first = instance.state.doc.firstChild;
+        if (!first || first.type.name !== 'heading' || first.attrs.level !== 1) return;
+
+        const heading = first.textContent.trim().slice(0, 200);
+        if (heading.length === 0 || heading === lastHeading.current) return;
+
+        if (headingTimer.current !== null) window.clearTimeout(headingTimer.current);
+        headingTimer.current = window.setTimeout(() => {
+          lastHeading.current = heading;
+          onHeadingTitleRef.current(heading);
+        }, 700);
+      },
       editorProps: {
         attributes: {
           class: 'collaby-prose',
@@ -133,6 +155,13 @@ export function CollabyEditor({
   useEffect(() => {
     if (editor) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  useEffect(
+    () => () => {
+      if (headingTimer.current !== null) window.clearTimeout(headingTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!editor) return;

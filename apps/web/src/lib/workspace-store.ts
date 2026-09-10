@@ -16,11 +16,12 @@ interface WorkspaceState {
     workspaceId: string;
     parentId?: string | null;
     title?: string;
+    isFolder?: boolean;
   }) => Promise<DocumentNode>;
   renameDocument: (documentId: string, title: string) => Promise<void>;
   deleteDocument: (documentId: string) => Promise<void>;
   moveDocument: (documentId: string, parentId: string | null, index?: number) => Promise<void>;
-  createWorkspace: (name: string) => Promise<WorkspaceSummary[]>;
+  createWorkspace: (name: string) => Promise<WorkspaceSummary>;
 }
 
 export const useWorkspaces = create<WorkspaceState>((set, get) => ({
@@ -54,7 +55,8 @@ export const useWorkspaces = create<WorkspaceState>((set, get) => ({
     const document = await api.post<DocumentNode>('/api/documents', {
       workspaceId: input.workspaceId,
       parentId: input.parentId ?? null,
-      title: input.title ?? 'Untitled',
+      title: input.title ?? (input.isFolder ? 'New folder' : 'Untitled'),
+      isFolder: input.isFolder ?? false,
     });
     set({ documents: [...get().documents, document] });
     return document;
@@ -71,7 +73,9 @@ export const useWorkspaces = create<WorkspaceState>((set, get) => ({
 
   async deleteDocument(documentId) {
     await api.delete(`/api/documents/${documentId}`);
-    set({ documents: get().documents.filter((document) => document.id !== documentId) });
+
+    const workspaceId = get().activeWorkspaceId;
+    if (workspaceId) await get().loadDocuments(workspaceId);
   },
 
   async moveDocument(documentId, parentId, index) {
@@ -82,8 +86,17 @@ export const useWorkspaces = create<WorkspaceState>((set, get) => ({
   },
 
   async createWorkspace(name) {
-    await api.post('/api/workspaces', { name, kind: 'group' });
-    return get().loadWorkspaces();
+    const created = await api.post<{ id: string; slug: string }>('/api/workspaces', {
+      name,
+      kind: 'group',
+    });
+
+    const workspaces = await get().loadWorkspaces();
+    const workspace = workspaces.find((candidate) => candidate.id === created.id);
+    if (!workspace) throw new Error('The new workspace did not come back');
+
+    await get().selectWorkspace(workspace.id);
+    return workspace;
   },
 }));
 

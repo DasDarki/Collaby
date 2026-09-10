@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, asc, desc, eq, isNull, schema, sql } from '@collaby/db';
+import { and, asc, desc, eq, inArray, isNull, schema, sql } from '@collaby/db';
 import {
   capabilitiesFor,
   createDocumentSchema,
@@ -12,7 +12,7 @@ import {
 } from '@collaby/shared';
 import type { AppContext } from '../../context.js';
 import { documentRepositoryPath, uniqueDocumentSlug } from '../../services/document-path.js';
-import { isDescendantOf, reorderDocument } from '../../services/document-tree.js';
+import { descendantIds, isDescendantOf, reorderDocument } from '../../services/document-tree.js';
 import { encodeState, markdownToYDoc } from '../../collab/document-store.js';
 import { findUserByEmail } from '../../services/users.js';
 import { searchDocuments } from '../../services/search.js';
@@ -71,19 +71,22 @@ export default async function documentRoutes(
         title: input.title,
         slug,
         position: position?.next ?? 0,
+        isFolder: input.isFolder,
         createdById: auth.userId,
       })
       .returning();
 
     if (!document) throw new Error('Failed to create document');
 
-    const seeded = markdownToYDoc(`# ${input.title}\n\n`);
-    await db.insert(schema.documentStates).values({
-      documentId: document.id,
-      state: encodeState(seeded),
-      markdown: `# ${input.title}\n`,
-    });
-    seeded.destroy();
+    if (!input.isFolder) {
+      const seeded = markdownToYDoc(`# ${input.title}\n\n`);
+      await db.insert(schema.documentStates).values({
+        documentId: document.id,
+        state: encodeState(seeded),
+        markdown: `# ${input.title}\n`,
+      });
+      seeded.destroy();
+    }
 
     reply.code(201);
     return {
@@ -234,21 +237,38 @@ export default async function documentRoutes(
     const { id } = documentParamSchema.parse(request.params);
     const access = await requireDocumentAccess(context, request, id, 'document.delete');
 
-    const filepath = await documentRepositoryPath(db, id);
+    const affected = await descendantIds(db, id);
+    const paths = new Map<string, string>();
+
+    for (const documentId of affected) {
+      paths.set(documentId, await documentRepositoryPath(db, documentId));
+    }
 
     await db
       .update(schema.documents)
       .set({ deletedAt: new Date() })
-      .where(eq(schema.documents.id, id));
+      .where(inArray(schema.documents.id, affected));
 
-    await repository.removeFile({
-      workspaceId: access.document.workspaceId,
-      filepath,
-      message: `Delete ${access.document.title}`,
-    });
+    const removable = await db
+      .select({ id: schema.documents.id, isFolder: schema.documents.isFolder })
+      .from(schema.documents)
+      .where(inArray(schema.documents.id, affected));
+
+    for (const document of removable) {
+      if (document.isFolder) continue;
+
+      const filepath = paths.get(document.id);
+      if (!filepath) continue;
+
+      await repository.removeFile({
+        workspaceId: access.document.workspaceId,
+        filepath,
+        message: `Delete ${access.document.title}`,
+      });
+    }
 
     reply.code(204);
-    return null;
+    return { deleted: affected.length };
   });
 
   app.get('/:id/revisions', async (request) => {

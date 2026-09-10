@@ -71,3 +71,19 @@ export async function reorderDocument(
     return { parentId: nextParentId, index };
   });
 }
+
+export async function descendantIds(db: Database, documentId: string): Promise<string[]> {
+  const rows = await db.execute<{ id: string }>(sql`
+    WITH RECURSIVE subtree AS (
+      SELECT id FROM documents WHERE id = ${documentId} AND deleted_at IS NULL
+      UNION ALL
+      SELECT d.id
+      FROM documents d
+      JOIN subtree s ON d.parent_id = s.id
+      WHERE d.deleted_at IS NULL
+    )
+    SELECT id FROM subtree
+  `);
+
+  return [...rows].map((row) => row.id);
+}
