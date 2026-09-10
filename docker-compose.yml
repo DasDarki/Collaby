@@ -56,7 +56,9 @@ services:
       PORT: 3000
 
   proxy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
     restart: unless-stopped
     depends_on:
       - web
@@ -64,7 +66,6 @@ services:
     ports:
       - '${PUBLIC_PORT:-8080}:8080'
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - collaby-caddy:/data
 
 volumes:

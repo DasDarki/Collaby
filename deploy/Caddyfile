@@ -6,6 +6,10 @@
 :8080 {
 	encode zstd gzip
 
+	handle /up {
+		respond "ok" 200
+	}
+
 	handle /api/* {
 		reverse_proxy server:4000
 	}
