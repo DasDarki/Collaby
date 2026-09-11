@@ -303,12 +303,20 @@ function SettingsContent() {
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 truncate text-[13px] text-moon">
                     {device.deviceName}
+                    {device.kind === 'cli' ? (
+                      <span className="rounded border border-lull-400/40 px-1 py-px text-[10px] uppercase tracking-wide text-lull-300">
+                        cli
+                      </span>
+                    ) : null}
                     {device.isCurrent ? (
                       <span className="rounded border border-leaf/40 px-1 py-px text-[10px] uppercase tracking-wide text-leaf">
                         this device
                       </span>
                     ) : null}
                   </p>
+                  {device.scopeLabel ? (
+                    <p className="mt-0.5 truncate text-[12px] text-haze">{device.scopeLabel}</p>
+                  ) : null}
                   <p className="mt-0.5 font-mono text-[11px] text-dusk">
                     {device.ipAddress ?? 'unknown ip'} · active {relativeTime(device.lastSeenAt)}
                   </p>

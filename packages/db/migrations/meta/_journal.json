@@ -29,6 +29,13 @@
       "when": 1789128897955,
       "tag": "0003_red_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789130054956,
+      "tag": "0004_brave_silver_sable",
+      "breakpoints": true
     }
   ]
 }

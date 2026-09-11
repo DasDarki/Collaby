@@ -9,6 +9,7 @@ import type { AuthResult, TwoFactorRequired } from '@collaby/shared';
 import { AuthShell } from '@/components/auth-shell';
 import { Banner, Button, Field, Input, Spinner } from '@/components/ui';
 import { ApiRequestError, api } from '@/lib/api';
+import { rememberReturnPath, safeReturnPath } from '@/lib/return-path';
 import { useSession } from '@/lib/session';
 
 type LoginResponse = AuthResult | TwoFactorRequired;
@@ -54,7 +55,7 @@ function LoginForm() {
 
   async function finish(result: AuthResult) {
     await applyAuthResult(result);
-    router.replace('/');
+    router.replace(safeReturnPath(params.get('next')));
   }
 
   async function submitPassword(event: React.FormEvent) {
@@ -177,7 +178,14 @@ function LoginForm() {
       footer={
         <>
           No account yet?{' '}
-          <Link href="/register" className="text-lull-400 hover:text-lull-300">
+          <Link
+            href={
+              params.get('next')
+                ? `/register?next=${encodeURIComponent(params.get('next')!)}`
+                : '/register'
+            }
+            className="text-lull-400 hover:text-lull-300"
+          >
             Create one
           </Link>
         </>
@@ -228,6 +236,7 @@ function LoginForm() {
           <Button
             variant="outline"
             onClick={() => {
+              rememberReturnPath(params.get('next'));
               window.location.href = `${api.baseUrl}/api/auth/oidc/start`;
             }}
           >

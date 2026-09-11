@@ -7,6 +7,7 @@ import type { AuthResult } from '@collaby/shared';
 import { AuthShell } from '@/components/auth-shell';
 import { Banner, Button, Field, Input, Spinner } from '@/components/ui';
 import { ApiRequestError, api } from '@/lib/api';
+import { currentReturnPath, rememberReturnPath, safeReturnPath } from '@/lib/return-path';
 import { useSession } from '@/lib/session';
 
 export default function RegisterPage() {
@@ -19,6 +20,12 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [ssoName, setSsoName] = useState<string | null>(null);
+  const [signInHref, setSignInHref] = useState('/login');
+
+  useEffect(() => {
+    const next = currentReturnPath();
+    if (next) setSignInHref(`/login?next=${encodeURIComponent(next)}`);
+  }, []);
 
   useEffect(() => {
     api
@@ -39,7 +46,7 @@ export default function RegisterPage() {
         { skipAuthRefresh: true },
       );
       await applyAuthResult(result);
-      router.replace('/');
+      router.replace(safeReturnPath(currentReturnPath()));
     } catch (cause) {
       setError(cause instanceof ApiRequestError ? cause.message : 'Could not create the account.');
     } finally {
@@ -54,7 +61,7 @@ export default function RegisterPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link href="/login" className="text-lull-400 hover:text-lull-300">
+          <Link href={signInHref} className="text-lull-400 hover:text-lull-300">
             Sign in
           </Link>
         </>
@@ -111,6 +118,7 @@ export default function RegisterPage() {
             variant="outline"
             className="w-full"
             onClick={() => {
+              rememberReturnPath(currentReturnPath());
               window.location.href = `${api.baseUrl}/api/auth/oidc/start`;
             }}
           >

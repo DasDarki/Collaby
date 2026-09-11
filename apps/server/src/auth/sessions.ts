@@ -1,5 +1,5 @@
-import { and, eq, gt, isNull, type Database, schema, sql } from '@collaby/db';
-import type { SessionDevice } from '@collaby/shared';
+import { and, eq, gt, inArray, isNull, type Database, schema, sql } from '@collaby/db';
+import type { CliScope, SessionDevice, SessionKind } from '@collaby/shared';
 import { randomToken, sha256 } from './crypto.js';
 import { deviceNameFromUserAgent } from './device-name.js';
 
@@ -9,6 +9,17 @@ export interface SessionRequestContext {
   deviceName?: string | undefined;
 }
 
+export interface SessionOptions {
+  kind?: SessionKind;
+  scope?: CliScope | null;
+}
+
+export interface RotationOptions {
+  kind?: SessionKind;
+  graceSeconds?: number;
+  reuseRevokes?: 'account' | 'session';
+}
+
 export interface IssuedSession {
   sessionId: string;
   refreshToken: string;
@@ -16,7 +27,7 @@ export interface IssuedSession {
 }
 
 export type RotationResult =
-  | { status: 'ok'; session: IssuedSession; userId: string }
+  | { status: 'ok'; session: IssuedSession; userId: string; scope: CliScope | null }
   | { status: 'invalid' }
   | { status: 'reused' };
 
@@ -29,6 +40,7 @@ export async function createSession(
   userId: string,
   context: SessionRequestContext,
   ttlSeconds: number,
+  options: SessionOptions = {},
 ): Promise<IssuedSession> {
   const refreshToken = randomToken(48);
   const expiresAt = expiryFrom(ttlSeconds);
@@ -42,6 +54,8 @@ export async function createSession(
       userAgent: context.userAgent,
       ipAddress: context.ipAddress,
       expiresAt,
+      kind: options.kind ?? 'browser',
+      scope: options.scope ?? null,
     })
     .returning({ id: schema.sessions.id });
 
@@ -55,8 +69,12 @@ export async function rotateSession(
   refreshToken: string,
   context: SessionRequestContext,
   ttlSeconds: number,
+  options: RotationOptions = {},
 ): Promise<RotationResult> {
+  const kind = options.kind ?? 'browser';
+  const graceSeconds = options.graceSeconds ?? 0;
   const presentedHash = sha256(refreshToken);
+  const now = new Date();
 
   const [active] = await db
     .select()
@@ -64,27 +82,58 @@ export async function rotateSession(
     .where(
       and(
         eq(schema.sessions.refreshTokenHash, presentedHash),
+        eq(schema.sessions.kind, kind),
         isNull(schema.sessions.revokedAt),
-        gt(schema.sessions.expiresAt, new Date()),
+        gt(schema.sessions.expiresAt, now),
       ),
     )
     .limit(1);
 
-  if (!active) {
-    const [reused] = await db
-      .select({ id: schema.sessions.id, userId: schema.sessions.userId })
-      .from(schema.sessions)
-      .where(eq(schema.sessions.previousRefreshTokenHash, presentedHash))
-      .limit(1);
-
-    if (reused) {
-      await revokeAllSessions(db, reused.userId, undefined, 'refresh_token_reuse');
-      return { status: 'reused' };
-    }
-
-    return { status: 'invalid' };
+  if (active) {
+    return issueRotation(db, active, presentedHash, context, ttlSeconds, true);
   }
 
+  const [previous] = await db
+    .select()
+    .from(schema.sessions)
+    .where(
+      and(
+        eq(schema.sessions.previousRefreshTokenHash, presentedHash),
+        eq(schema.sessions.kind, kind),
+      ),
+    )
+    .limit(1);
+
+  if (!previous) return { status: 'invalid' };
+
+  const withinGrace =
+    graceSeconds > 0 &&
+    previous.revokedAt === null &&
+    previous.expiresAt > now &&
+    previous.rotatedAt !== null &&
+    now.getTime() - previous.rotatedAt.getTime() <= graceSeconds * 1000;
+
+  if (withinGrace) {
+    return issueRotation(db, previous, presentedHash, context, ttlSeconds, false);
+  }
+
+  if (options.reuseRevokes === 'session') {
+    await revokeSession(db, previous.userId, previous.id, 'refresh_token_reuse');
+  } else {
+    await revokeAllSessions(db, previous.userId, undefined, 'refresh_token_reuse');
+  }
+
+  return { status: 'reused' };
+}
+
+async function issueRotation(
+  db: Database,
+  session: typeof schema.sessions.$inferSelect,
+  presentedHash: string,
+  context: SessionRequestContext,
+  ttlSeconds: number,
+  restartGrace: boolean,
+): Promise<RotationResult> {
   const nextToken = randomToken(48);
   const expiresAt = expiryFrom(ttlSeconds);
 
@@ -93,18 +142,19 @@ export async function rotateSession(
     .set({
       refreshTokenHash: sha256(nextToken),
       previousRefreshTokenHash: presentedHash,
-      rotatedAt: new Date(),
+      ...(restartGrace ? { rotatedAt: new Date() } : {}),
       lastSeenAt: new Date(),
       expiresAt,
-      userAgent: context.userAgent ?? active.userAgent,
-      ipAddress: context.ipAddress ?? active.ipAddress,
+      userAgent: context.userAgent ?? session.userAgent,
+      ipAddress: context.ipAddress ?? session.ipAddress,
     })
-    .where(eq(schema.sessions.id, active.id));
+    .where(eq(schema.sessions.id, session.id));
 
   return {
     status: 'ok',
-    userId: active.userId,
-    session: { sessionId: active.id, refreshToken: nextToken, expiresAt },
+    userId: session.userId,
+    scope: (session.scope as CliScope | null) ?? null,
+    session: { sessionId: session.id, refreshToken: nextToken, expiresAt },
   };
 }
 
@@ -149,13 +199,18 @@ export async function revokeAllSessions(
   return revoked.length;
 }
 
-export async function isSessionActive(db: Database, sessionId: string): Promise<boolean> {
+export async function isSessionActive(
+  db: Database,
+  sessionId: string,
+  kind: SessionKind = 'browser',
+): Promise<boolean> {
   const [session] = await db
     .select({ id: schema.sessions.id })
     .from(schema.sessions)
     .where(
       and(
         eq(schema.sessions.id, sessionId),
+        eq(schema.sessions.kind, kind),
         isNull(schema.sessions.revokedAt),
         gt(schema.sessions.expiresAt, new Date()),
       ),
@@ -165,11 +220,57 @@ export async function isSessionActive(db: Database, sessionId: string): Promise<
   return Boolean(session);
 }
 
+export async function loadActiveCliSession(
+  db: Database,
+  sessionId: string,
+): Promise<{ userId: string; scope: CliScope } | null> {
+  const [session] = await db
+    .select({ userId: schema.sessions.userId, scope: schema.sessions.scope })
+    .from(schema.sessions)
+    .where(
+      and(
+        eq(schema.sessions.id, sessionId),
+        eq(schema.sessions.kind, 'cli'),
+        isNull(schema.sessions.revokedAt),
+        gt(schema.sessions.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!session?.scope) return null;
+  return { userId: session.userId, scope: session.scope as CliScope };
+}
+
 export async function touchSession(db: Database, sessionId: string): Promise<void> {
   await db
     .update(schema.sessions)
     .set({ lastSeenAt: new Date() })
     .where(eq(schema.sessions.id, sessionId));
+}
+
+async function describeScope(db: Database, scope: CliScope | null): Promise<string | null> {
+  if (!scope) return null;
+  if (scope.all) return 'Read access to all workspaces';
+
+  const names: string[] = [];
+
+  if (scope.workspaces.length > 0) {
+    const rows = await db
+      .select({ name: schema.workspaces.name })
+      .from(schema.workspaces)
+      .where(inArray(schema.workspaces.id, scope.workspaces));
+    names.push(...rows.map((row) => row.name));
+  }
+
+  if (scope.folders.length > 0) {
+    const rows = await db
+      .select({ title: schema.documents.title })
+      .from(schema.documents)
+      .where(inArray(schema.documents.id, scope.folders));
+    names.push(...rows.map((row) => row.title));
+  }
+
+  return names.length > 0 ? `Read access to ${names.join(', ')}` : 'Read access to nothing';
 }
 
 export async function listSessions(
@@ -189,13 +290,17 @@ export async function listSessions(
     )
     .orderBy(schema.sessions.lastSeenAt);
 
-  return rows.map((row) => ({
-    id: row.id,
-    deviceName: row.deviceName,
-    userAgent: row.userAgent,
-    ipAddress: row.ipAddress,
-    createdAt: row.createdAt.toISOString(),
-    lastSeenAt: row.lastSeenAt.toISOString(),
-    isCurrent: row.id === currentSessionId,
-  }));
+  return Promise.all(
+    rows.map(async (row) => ({
+      id: row.id,
+      kind: row.kind === 'cli' ? ('cli' as const) : ('browser' as const),
+      deviceName: row.deviceName,
+      userAgent: row.userAgent,
+      ipAddress: row.ipAddress,
+      createdAt: row.createdAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      isCurrent: row.id === currentSessionId,
+      scopeLabel: row.kind === 'cli' ? await describeScope(db, row.scope as CliScope | null) : null,
+    })),
+  );
 }

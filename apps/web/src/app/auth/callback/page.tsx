@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Spinner } from '@/components/ui';
+import { takeReturnPath } from '@/lib/return-path';
 import { useSession } from '@/lib/session';
 
 export default function AuthCallbackPage() {
@@ -10,7 +11,7 @@ export default function AuthCallbackPage() {
   const bootstrap = useSession((state) => state.bootstrap);
 
   useEffect(() => {
-    void bootstrap().then(() => router.replace('/'));
+    void bootstrap().then(() => router.replace(takeReturnPath()));
   }, [bootstrap, router]);
 
   return (

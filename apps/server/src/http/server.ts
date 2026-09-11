@@ -12,6 +12,7 @@ import { HttpError } from './errors.js';
 import accountRoutes from './routes/account.js';
 import assetRoutes from './routes/assets.js';
 import authRoutes from './routes/auth.js';
+import cliRoutes from './routes/cli.js';
 import commentRoutes from './routes/comments.js';
 import documentRoutes from './routes/documents.js';
 import searchRoutes from './routes/search.js';
@@ -98,6 +99,7 @@ export async function buildServer(context: AppContext): Promise<CollabyServer> {
   await app.register(async (instance) => shareRoutes(instance, context), { prefix: '/api' });
   await app.register(async (instance) => assetRoutes(instance, context), { prefix: '/api' });
   await app.register(async (instance) => searchRoutes(instance, context), { prefix: '/api' });
+  await app.register(async (instance) => cliRoutes(instance, context), { prefix: '/api/cli' });
 
   const collab = createCollabServer(context);
 

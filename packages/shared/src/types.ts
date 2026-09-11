@@ -8,14 +8,20 @@ export interface PublicUser {
   avatarUrl: string | null;
 }
 
+export type SessionKind = 'browser' | 'cli';
+
+export type CliScope = { all: true } | { all: false; workspaces: string[]; folders: string[] };
+
 export interface SessionDevice {
   id: string;
+  kind: SessionKind;
   deviceName: string;
   userAgent: string | null;
   ipAddress: string | null;
   createdAt: string;
   lastSeenAt: string;
   isCurrent: boolean;
+  scopeLabel: string | null;
 }
 
 export interface PasskeySummary {
