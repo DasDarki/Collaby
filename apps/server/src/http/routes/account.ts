@@ -23,6 +23,7 @@ import {
 import { buildRegistrationOptions, verifyRegistration } from '../../auth/webauthn.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../errors.js';
 import { randomToken } from '../../auth/crypto.js';
+import { rememberLocation, resolveLanding } from '../../services/landing.js';
 import {
   AVATAR_MIME_TYPES,
   MAX_AVATAR_BYTES,
@@ -80,6 +81,24 @@ export default async function accountRoutes(
       hasPassword: Boolean(details?.passwordHash),
       sessionId: auth.sessionId,
     };
+  });
+
+  app.get('/landing', async (request) => {
+    const auth = app.requireAuth(request);
+    return resolveLanding(db, auth.userId);
+  });
+
+  app.put('/last-location', async (request, reply) => {
+    const auth = app.requireAuth(request);
+    const input = z
+      .object({ workspaceId: z.string().uuid(), documentId: z.string().uuid().nullable() })
+      .parse(request.body);
+
+    const stored = await rememberLocation(db, auth.userId, input.workspaceId, input.documentId);
+    if (!stored) throw forbidden('That location is not one you can open');
+
+    reply.code(204);
+    return null;
   });
 
   app.patch('/me', async (request) => {

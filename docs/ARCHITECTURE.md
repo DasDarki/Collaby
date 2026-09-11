@@ -100,16 +100,17 @@ the same subject string.
 
 ## Storage
 
-| Table                                                               | Holds                                               |
-| ------------------------------------------------------------------- | --------------------------------------------------- |
-| `users`, `sessions`, `passkeys`, `recovery_codes`, `oauth_accounts` | accounts and how they sign in                       |
-| `workspaces`, `workspace_members`                                   | who belongs where                                   |
-| `documents`                                                         | the page tree, one row per page                     |
-| `document_states`                                                   | the Yjs binary state and the last exported markdown |
-| `document_permissions`, `share_links`                               | sharing                                             |
-| `comments`                                                          | threads anchored to a text range                    |
-| `document_revisions`                                                | a searchable mirror of the git log                  |
-| `assets`                                                            | uploaded images                                     |
+| Table                                                               | Holds                                                                       |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `users`, `sessions`, `passkeys`, `recovery_codes`, `oauth_accounts` | accounts and how they sign in                                               |
+| `workspaces`, `workspace_members`                                   | who belongs where                                                           |
+| `documents`                                                         | the page tree, one row per page                                             |
+| `document_states`                                                   | the Yjs binary state and the last exported markdown                         |
+| `document_permissions`, `share_links`                               | sharing                                                                     |
+| `comments`                                                          | threads anchored to a text range                                            |
+| `document_revisions`                                                | a searchable mirror of the git log                                          |
+| `assets`                                                            | uploaded images                                                             |
+| `user_preferences`                                                  | the workspace and page each person last had open, so `/` returns them there |
 
 Files on disk under `DATA_DIR`:
 

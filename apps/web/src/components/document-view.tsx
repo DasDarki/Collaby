@@ -38,7 +38,7 @@ export function DocumentView({
 }) {
   const router = useRouter();
   const user = useSession((state) => state.user);
-  const { loadWorkspaces, loadDocuments, renameDocument } = useWorkspaces();
+  const { loadWorkspaces, loadDocuments, renameDocument, rememberLocation } = useWorkspaces();
 
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,14 +92,30 @@ export function DocumentView({
     };
   }, [documentId, shareToken]);
 
+  const userId = user?.id ?? null;
+  const detailId = detail?.id ?? null;
+  const detailWorkspaceId = detail?.workspaceId ?? null;
+  const detailIsFolder = detail?.isFolder ?? false;
+
   useEffect(() => {
-    if (!user || !detail) return;
+    if (!userId || !detailId || !detailWorkspaceId) return;
 
     void loadWorkspaces().then((workspaces) => {
-      const isMember = workspaces.some((workspace) => workspace.id === detail.workspaceId);
-      if (isMember) void loadDocuments(detail.workspaceId);
+      const isMember = workspaces.some((workspace) => workspace.id === detailWorkspaceId);
+      if (!isMember) return;
+
+      void loadDocuments(detailWorkspaceId);
+      rememberLocation(detailWorkspaceId, detailIsFolder ? null : detailId);
     });
-  }, [user, detail, loadWorkspaces, loadDocuments]);
+  }, [
+    userId,
+    detailId,
+    detailWorkspaceId,
+    detailIsFolder,
+    loadWorkspaces,
+    loadDocuments,
+    rememberLocation,
+  ]);
 
   useEffect(() => {
     if (!detail) return;

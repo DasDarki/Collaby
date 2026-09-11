@@ -22,7 +22,11 @@ interface WorkspaceState {
   deleteDocument: (documentId: string) => Promise<void>;
   moveDocument: (documentId: string, parentId: string | null, index?: number) => Promise<void>;
   createWorkspace: (name: string) => Promise<WorkspaceSummary>;
+  rememberLocation: (workspaceId: string, documentId: string | null) => void;
 }
+
+let lastRemembered: string | null = null;
+let rememberQueue: Promise<unknown> = Promise.resolve();
 
 export const useWorkspaces = create<WorkspaceState>((set, get) => ({
   workspaces: [],
@@ -38,7 +42,21 @@ export const useWorkspaces = create<WorkspaceState>((set, get) => ({
 
   async selectWorkspace(workspaceId) {
     set({ activeWorkspaceId: workspaceId });
+    get().rememberLocation(workspaceId, null);
     await get().loadDocuments(workspaceId);
+  },
+
+  rememberLocation(workspaceId, documentId) {
+    const key = `${workspaceId}:${documentId ?? ''}`;
+    if (key === lastRemembered) return;
+    lastRemembered = key;
+
+    rememberQueue = rememberQueue
+      .catch(() => undefined)
+      .then(() => api.put('/api/account/last-location', { workspaceId, documentId }))
+      .catch(() => {
+        if (lastRemembered === key) lastRemembered = null;
+      });
   },
 
   async loadDocuments(workspaceId) {
