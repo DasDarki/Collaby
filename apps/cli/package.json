@@ -1,0 +1,25 @@
+{
+  "name": "@collaby/cli",
+  "version": "0.1.0",
+  "description": "Keep a local, read-only copy of your Collaby pages in sync",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "collaby": "dist/collaby.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.0"
+  }
+}

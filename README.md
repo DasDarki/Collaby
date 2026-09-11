@@ -97,6 +97,55 @@ on the provider's issuer and subject. If an account with the same address alread
 the two are linked, and its password keeps working. Collaby refuses a sign-on whose email
 the provider has not verified, so nobody can take over an account by claiming its address.
 
+## CLI
+
+The Collaby CLI keeps a read-only copy of your pages in a local folder, so an LLM agent
+or any other tool can read the latest version without anyone exporting files by hand.
+
+```bash
+pnpm --filter @collaby/cli build
+npm install -g ./apps/cli          # puts `collaby` on your PATH
+
+mkdir ~/notes && cd ~/notes
+collaby setup https://collaby.example.com
+```
+
+`setup` opens your browser, where you sign in if needed, check that the code matches the
+one in your terminal, and choose what the CLI may read: everything, or specific
+workspaces and folders. The terminal picks up the approval on its own and downloads the
+pages. On a machine without a browser, add `--no-browser` and open the printed link
+anywhere.
+
+| Command          |                                                      |
+| ---------------- | ---------------------------------------------------- |
+| `collaby pull`   | bring the folder up to date                          |
+| `collaby watch`  | keep it up to date until you press Ctrl+C            |
+| `collaby status` | account, access and last sync (`--json` for scripts) |
+| `collaby logout` | sign this folder out on the server                   |
+
+The CLI works like git: it keeps its state in a `.collaby` folder next to your files and
+finds it from any subfolder, so one machine can hold several synced folders. That folder
+holds the credentials with owner-only permissions and ignores itself in git.
+
+Pages land at `<workspace>/<folder>/<page>.md`. Each file starts with frontmatter
+carrying the title, workspace, last update and a link back to the page. Links between
+synced pages are rewritten to relative paths, so an agent can follow them on disk.
+
+For agents, run `collaby pull --quiet` before reading, or leave `collaby watch` running.
+Exit code 3 means the folder was signed out and a person has to run `setup` again.
+
+A few rules keep the folder trustworthy:
+
+- `pull` always makes the files match the server. If something edited a synced file,
+  the server version comes back and the edit is kept in `.collaby/local-changes`.
+- Files the CLI did not create are never touched.
+- The CLI can only read. It cannot edit, share or delete, and it is limited to what you
+  approved. You can sign it out under Settings, Devices, where it shows what it can read.
+
+Sync is one way on purpose. Writing a local file back would mean rebuilding the live
+document from markdown, which drops comment anchors and overwrites whatever someone else
+typed in the meantime.
+
 ## Deploying
 
 Everything is served from one domain through a small Caddy container, which keeps cookies
@@ -135,6 +184,7 @@ change it.
 
 ```
 apps/web        Next.js app: editor, sharing, account settings
+apps/cli        the collaby command line tool, bundled into a single file
 apps/server     Fastify API, Hocuspocus collaboration server, git versioning
 packages/editor Tiptap schema and the markdown parser/serializer, shared by both
 packages/db     Drizzle schema and migrations
@@ -147,15 +197,16 @@ markdown it commits to git.
 
 ## Commands
 
-|                                      |                                          |
-| ------------------------------------ | ---------------------------------------- |
-| `pnpm dev`                           | run web and API together                 |
-| `pnpm build`                         | build everything                         |
-| `pnpm typecheck`                     | typecheck every package                  |
-| `pnpm --filter @collaby/editor test` | markdown round-trip tests                |
-| `pnpm db:generate`                   | generate a migration from schema changes |
-| `pnpm db:migrate`                    | apply migrations                         |
-| `pnpm infra:up` / `pnpm infra:down`  | local Postgres                           |
+|                                      |                                                |
+| ------------------------------------ | ---------------------------------------------- |
+| `pnpm dev`                           | run web and API together                       |
+| `pnpm build`                         | build everything                               |
+| `pnpm typecheck`                     | typecheck every package                        |
+| `pnpm --filter @collaby/editor test` | markdown round-trip tests                      |
+| `pnpm --filter @collaby/cli build`   | build the CLI into `apps/cli/dist/collaby.mjs` |
+| `pnpm db:generate`                   | generate a migration from schema changes       |
+| `pnpm db:migrate`                    | apply migrations                               |
+| `pnpm infra:up` / `pnpm infra:down`  | local Postgres                                 |
 
 ## Security notes
 

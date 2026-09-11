@@ -111,6 +111,7 @@ the same subject string.
 | `document_revisions`                                                | a searchable mirror of the git log                                          |
 | `assets`                                                            | uploaded images                                                             |
 | `user_preferences`                                                  | the workspace and page each person last had open, so `/` returns them there |
+| `cli_device_requests`                                               | pending CLI sign-ins, their user code and the scope once approved           |
 
 Files on disk under `DATA_DIR`:
 
@@ -161,6 +162,57 @@ one after a long press on the grip handle, which is always visible on devices wi
 hover. Dropping on the upper or lower quarter of a row reorders, dropping on the middle
 nests, and a collapsed folder opens if you hover over it. Drops onto the page itself or
 onto one of its own descendants are refused in the browser and again on the server.
+
+## CLI sync
+
+### Signing in
+
+`collaby setup` uses a device authorization flow. The CLI asks the server for a pair of
+codes: a long device code it keeps to itself, and a short user code it shows in the
+terminal and in the link it opens. The browser page shows the same user code and the
+machine name, so a person can tell they are approving their own terminal and not a link
+someone sent them. The CLI waits on `POST /api/cli/token`, which the server holds open for
+up to 25 seconds at a time, so approval reaches the terminal within about a second without
+the CLI hammering the server.
+
+The token is issued when the CLI collects it, not when the person approves. That way the
+refresh token never has to be stored in plain text anywhere on the server.
+
+### A token that can only read
+
+A CLI session is a row in `sessions` with `kind = 'cli'` and the approved scope. Its access
+token is signed for a different audience (`collaby-cli`), so every normal route rejects it
+outright, and CLI routes reject browser tokens the same way. Refresh is split too:
+`/api/auth/refresh` only rotates browser sessions and `/api/cli/refresh` only CLI sessions.
+Without that split, a refresh token read out of `.collaby/credentials.json` could be traded
+at the browser endpoint for a token with full account access.
+
+CLI refresh tokens rotate like browser ones, with two differences. A replayed token within
+60 seconds of a rotation is treated as a crash between the server rotating and the CLI
+saving the new token, and rotates again instead of failing. Outside that window, reuse ends
+only that CLI session rather than every session on the account.
+
+### What a session can see
+
+The scope is either every workspace the person belongs to, including ones they join later,
+or a list of workspaces and folders. It is resolved on every request and intersected with
+current membership, so leaving a workspace also removes it from the CLI.
+
+A page's local path starts at the highest point that was granted: the workspace root when
+the whole workspace is shared, the folder itself when only a folder is. Names of folders
+above a granted folder never appear, since they were not shared.
+
+### Keeping up to date
+
+`GET /api/cli/manifest` lists every page in scope with its path and a hash of its markdown,
+plus a cursor derived from all of them. The CLI downloads only pages whose hash changed,
+keeps the raw markdown in `.collaby/cache`, and renders the files from that cache. Rendering
+locally matters because a page's file can change without its own content changing: when a
+page it links to is renamed, the relative link has to be rewritten.
+
+`collaby watch` long polls `GET /api/cli/wait` with its cursor. The server compares the
+cursor about every second and a half and answers as soon as it differs, so changes arrive a
+few seconds after the editor saves them.
 
 ## Deployment
 
