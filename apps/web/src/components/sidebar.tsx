@@ -19,6 +19,9 @@ import {
   Users,
 } from 'lucide-react';
 import type { WorkspaceSummary } from '@collaby/shared';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { ContextMenu, type ContextMenuPosition } from '@/components/context-menu';
+import { TrashDialog } from '@/components/trash-dialog';
 import { Popover } from '@/components/popover';
 import { Avatar, Button, Input } from '@/components/ui';
 import { Wordmark } from '@/components/wordmark';
@@ -59,6 +62,12 @@ interface RowActions {
   onDragStart: (event: React.PointerEvent, node: DocumentTreeNode) => void;
 }
 
+function collectSubtreeIds(node: DocumentTreeNode, into = new Set<string>()): Set<string> {
+  into.add(node.id);
+  for (const child of node.children) collectSubtreeIds(child, into);
+  return into;
+}
+
 function MenuItem({
   icon,
   label,
@@ -82,6 +91,57 @@ function MenuItem({
       {icon}
       {label}
     </button>
+  );
+}
+
+function NodeMenuItems({
+  node,
+  actions,
+  setRenaming,
+  close,
+}: {
+  node: DocumentTreeNode;
+  actions: RowActions;
+  setRenaming: (id: string | null) => void;
+  close: () => void;
+}) {
+  return (
+    <div className="grid gap-0.5">
+      <MenuItem
+        icon={<Pencil size={12} />}
+        label="Rename"
+        onClick={() => {
+          close();
+          setRenaming(node.id);
+        }}
+      />
+      <MenuItem
+        icon={<Plus size={12} />}
+        label="Page inside"
+        onClick={() => {
+          close();
+          actions.onCreateChild(node.id, false);
+        }}
+      />
+      <MenuItem
+        icon={<FolderPlus size={12} />}
+        label="Folder inside"
+        onClick={() => {
+          close();
+          actions.onCreateChild(node.id, true);
+        }}
+      />
+      <span className="my-0.5 h-px bg-night-600" />
+      <MenuItem
+        icon={<Trash2 size={12} />}
+        label="Delete"
+        danger
+        onClick={() => {
+          close();
+          actions.onDelete(node);
+        }}
+      />
+    </div>
   );
 }
 
@@ -110,6 +170,7 @@ function TreeRow({
   const isDragging = drag?.documentId === node.id;
   const target = dropTarget?.documentId === node.id ? dropTarget.mode : null;
   const [draft, setDraft] = useState(node.title);
+  const [menuAt, setMenuAt] = useState<ContextMenuPosition | null>(null);
 
   useEffect(() => {
     if (renaming === node.id) setDraft(node.title);
@@ -137,10 +198,15 @@ function TreeRow({
     <>
       <div
         data-doc-id={node.id}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenuAt({ x: event.clientX, y: event.clientY });
+        }}
         className={cn(
           'group relative flex h-7 items-center gap-1 rounded-md pr-1 transition-colors',
           isActive ? 'bg-night-700 text-moon' : 'text-haze hover:bg-night-750 hover:text-moon',
           isDragging && 'opacity-40',
+          menuAt && 'bg-night-750 text-moon',
           target === 'inside' && 'bg-lull-400/15 ring-1 ring-inset ring-lull-400/60',
         )}
         style={{ paddingLeft: 4 + node.depth * 12 }}
@@ -226,8 +292,9 @@ function TreeRow({
               aria-label={`Actions for ${node.title}`}
               onClick={toggle}
               className={cn(
-                'h-5 w-5 shrink-0 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon',
-                open ? 'flex' : 'hidden group-hover:flex',
+                'flex h-5 w-5 shrink-0 items-center justify-center rounded text-dusk transition-opacity hover:bg-night-700 hover:text-moon',
+                'group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+                open ? 'opacity-100' : 'opacity-0',
               )}
             >
               <MoreHorizontal size={13} />
@@ -235,44 +302,18 @@ function TreeRow({
           )}
         >
           {({ close }) => (
-            <div className="grid gap-0.5">
-              <MenuItem
-                icon={<Pencil size={12} />}
-                label="Rename"
-                onClick={() => {
-                  close();
-                  setRenaming(node.id);
-                }}
-              />
-              <MenuItem
-                icon={<Plus size={12} />}
-                label="Page inside"
-                onClick={() => {
-                  close();
-                  actions.onCreateChild(node.id, false);
-                }}
-              />
-              <MenuItem
-                icon={<FolderPlus size={12} />}
-                label="Folder inside"
-                onClick={() => {
-                  close();
-                  actions.onCreateChild(node.id, true);
-                }}
-              />
-              <span className="my-0.5 h-px bg-night-600" />
-              <MenuItem
-                icon={<Trash2 size={12} />}
-                label="Delete"
-                danger
-                onClick={() => {
-                  close();
-                  actions.onDelete(node);
-                }}
-              />
-            </div>
+            <NodeMenuItems node={node} actions={actions} setRenaming={setRenaming} close={close} />
           )}
         </Popover>
+
+        <ContextMenu position={menuAt} onClose={() => setMenuAt(null)} className="w-[176px]">
+          <NodeMenuItems
+            node={node}
+            actions={actions}
+            setRenaming={setRenaming}
+            close={() => setMenuAt(null)}
+          />
+        </ContextMenu>
       </div>
 
       {isOpen
@@ -375,6 +416,7 @@ export function Sidebar({
     deleteDocument,
     moveDocument,
     createWorkspace,
+    loadDocuments,
   } = useWorkspaces();
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -382,6 +424,9 @@ export function Sidebar({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<DocumentTreeNode | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const navRef = useRef<HTMLElement>(null);
   const pending = useRef<{ documentId: string; title: string; x: number; y: number } | null>(null);
@@ -426,18 +471,21 @@ export function Sidebar({
     [activeWorkspaceId, createDocument, router],
   );
 
-  const removeDocument = useCallback(
-    async (node: DocumentTreeNode) => {
-      const label = node.isFolder ? 'folder' : 'page';
-      const extra = node.children.length > 0 ? ' and everything inside it' : '';
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
 
-      if (!window.confirm(`Delete the ${label} "${node.title}"${extra}?`)) return;
+    setDeleting(true);
 
-      await deleteDocument(node.id);
-      if (activeDocumentId === node.id) router.push('/');
-    },
-    [deleteDocument, activeDocumentId, router],
-  );
+    try {
+      await deleteDocument(pendingDelete.id);
+      if (activeDocumentId !== null && collectSubtreeIds(pendingDelete).has(activeDocumentId)) {
+        router.push('/');
+      }
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDelete, deleteDocument, activeDocumentId, router]);
 
   const clearTimers = useCallback(() => {
     if (holdTimer.current !== null) {
@@ -600,7 +648,7 @@ export function Sidebar({
     onToggle: toggle,
     onCreateChild: (parentId, isFolder) => void addDocument(parentId, isFolder),
     onRename: (id, title) => void renameDocument(id, title),
-    onDelete: (node) => void removeDocument(node),
+    onDelete: (node) => setPendingDelete(node),
     onNavigate,
     onDragStart,
   };
@@ -653,6 +701,15 @@ export function Sidebar({
         </span>
 
         <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setTrashOpen(true)}
+            aria-label="Trash"
+            title="Trash"
+            className="flex h-5 w-5 items-center justify-center rounded text-dusk hover:bg-night-700 hover:text-moon"
+          >
+            <Trash2 size={13} />
+          </button>
           <button
             type="button"
             onClick={() => void addDocument(null, true)}
@@ -732,6 +789,35 @@ export function Sidebar({
           }}
         />
       ) : null}
+
+      {trashOpen && activeWorkspaceId ? (
+        <TrashDialog
+          workspaceId={activeWorkspaceId}
+          onClose={() => setTrashOpen(false)}
+          onRestored={async () => {
+            await loadDocuments(activeWorkspaceId);
+          }}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete ${pendingDelete?.isFolder ? 'folder' : 'page'}`}
+        body={
+          <>
+            &ldquo;{pendingDelete?.title}&rdquo;
+            {pendingDelete && pendingDelete.children.length > 0
+              ? ' and everything inside it'
+              : ''}{' '}
+            moves to the trash. You can restore it from there.
+          </>
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       {drag ? (
         <div

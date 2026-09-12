@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Fraunces, Instrument_Sans, JetBrains_Mono, Newsreader } from 'next/font/google';
 import '../styles/globals.css';
 import '../styles/editor.scss';
+import '../styles/print.scss';
 
 const fraunces = Fraunces({
   subsets: ['latin'],

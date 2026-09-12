@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, asc, eq, isNull, schema } from '@collaby/db';
+import { and, asc, desc, eq, isNotNull, isNull, schema } from '@collaby/db';
 import {
   createWorkspaceSchema,
   inviteMemberSchema,
@@ -217,6 +217,43 @@ export default async function workspaceRoutes(
 
     reply.code(204);
     return null;
+  });
+
+  app.get('/:id/trash', async (request) => {
+    const { id } = workspaceParamSchema.parse(request.params);
+    await requireWorkspaceAccess(context, request, id, 'document.delete');
+
+    const rows = await db
+      .select({
+        id: schema.documents.id,
+        parentId: schema.documents.parentId,
+        title: schema.documents.title,
+        isFolder: schema.documents.isFolder,
+        deletedAt: schema.documents.deletedAt,
+        deletedBatchId: schema.documents.deletedBatchId,
+      })
+      .from(schema.documents)
+      .where(and(eq(schema.documents.workspaceId, id), isNotNull(schema.documents.deletedAt)))
+      .orderBy(desc(schema.documents.deletedAt));
+
+    const batchOf = new Map(rows.map((row) => [row.id, row.deletedBatchId ?? row.id]));
+
+    return rows
+      .filter((row) => {
+        if (!row.parentId) return true;
+        const parentBatch = batchOf.get(row.parentId);
+        return parentBatch === undefined || parentBatch !== batchOf.get(row.id);
+      })
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        isFolder: row.isFolder,
+        deletedAt: row.deletedAt!.toISOString(),
+        childCount: row.deletedBatchId
+          ? rows.filter((other) => other.deletedBatchId === row.deletedBatchId && other.id !== row.id)
+              .length
+          : 0,
+      }));
   });
 
   app.get('/:id/documents', async (request) => {

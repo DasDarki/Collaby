@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { AuthGate } from '@/components/auth-gate';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { QrCode } from '@/components/qr-code';
 import { Avatar, Banner, Button, Field, Input, Spinner } from '@/components/ui';
 import { ApiRequestError, api } from '@/lib/api';
@@ -73,6 +74,8 @@ function SettingsContent() {
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [disablingTwoFactor, setDisablingTwoFactor] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
 
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [ssoName, setSsoName] = useState<string | null>(null);
@@ -201,15 +204,20 @@ function SettingsContent() {
     }
   }
 
-  async function disableTwoFactor() {
-    const code = window.prompt('Enter a current authenticator code to turn off two-factor');
-    if (!code) return;
+  async function disableTwoFactor(code: string) {
+    setBusy(true);
+    setTwoFactorError(null);
 
     try {
-      await api.post('/api/account/2fa/disable', { code });
+      await api.post('/api/account/2fa/disable', { code: code.trim() });
       await refreshAccount();
+      setDisablingTwoFactor(false);
     } catch (cause) {
-      setError(cause instanceof ApiRequestError ? cause.message : 'Could not turn it off.');
+      setTwoFactorError(
+        cause instanceof ApiRequestError ? cause.message : 'Could not turn it off.',
+      );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -498,7 +506,15 @@ function SettingsContent() {
                 <ShieldCheck size={14} />
                 Two-factor is on
               </span>
-              <Button variant="danger" size="sm" className="ml-auto" onClick={disableTwoFactor}>
+              <Button
+                variant="danger"
+                size="sm"
+                className="ml-auto"
+                onClick={() => {
+                  setTwoFactorError(null);
+                  setDisablingTwoFactor(true);
+                }}
+              >
                 Turn off
               </Button>
             </div>
@@ -546,6 +562,19 @@ function SettingsContent() {
           )}
         </Section>
       </div>
+
+      <ConfirmDialog
+        open={disablingTwoFactor}
+        title="Turn off two-factor"
+        body="Enter a current code from your authenticator app to confirm."
+        confirmLabel="Turn off"
+        danger
+        busy={busy}
+        error={twoFactorError}
+        input={{ label: 'Authenticator code', placeholder: '123456', inputMode: 'numeric' }}
+        onConfirm={(code) => void disableTwoFactor(code)}
+        onCancel={() => setDisablingTwoFactor(false)}
+      />
     </main>
   );
 }

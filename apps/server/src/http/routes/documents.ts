@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, asc, desc, eq, inArray, isNull, schema, sql } from '@collaby/db';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, schema, sql } from '@collaby/db';
 import {
   capabilitiesFor,
   createDocumentSchema,
@@ -12,7 +13,12 @@ import {
 } from '@collaby/shared';
 import type { AppContext } from '../../context.js';
 import { documentRepositoryPath, uniqueDocumentSlug } from '../../services/document-path.js';
-import { descendantIds, isDescendantOf, reorderDocument } from '../../services/document-tree.js';
+import {
+  descendantIds,
+  isDescendantOf,
+  reorderDocument,
+  restoreDeleted,
+} from '../../services/document-tree.js';
 import { encodeState, markdownToYDoc } from '../../collab/document-store.js';
 import { findUserByEmail } from '../../services/users.js';
 import { searchDocuments } from '../../services/search.js';
@@ -244,9 +250,11 @@ export default async function documentRoutes(
       paths.set(documentId, await documentRepositoryPath(db, documentId));
     }
 
+    const batchId = randomUUID();
+
     await db
       .update(schema.documents)
-      .set({ deletedAt: new Date() })
+      .set({ deletedAt: new Date(), deletedBatchId: batchId })
       .where(inArray(schema.documents.id, affected));
 
     const removable = await db
@@ -269,6 +277,49 @@ export default async function documentRoutes(
 
     reply.code(204);
     return { deleted: affected.length };
+  });
+
+  app.post('/:id/restore', async (request) => {
+    const { id } = documentParamSchema.parse(request.params);
+    const auth = app.requireAuth(request);
+
+    const [target] = await db
+      .select({
+        id: schema.documents.id,
+        title: schema.documents.title,
+        workspaceId: schema.documents.workspaceId,
+        deletedBatchId: schema.documents.deletedBatchId,
+      })
+      .from(schema.documents)
+      .where(and(eq(schema.documents.id, id), isNotNull(schema.documents.deletedAt)))
+      .limit(1);
+
+    if (!target) throw notFound('That page is not in the trash');
+
+    await requireWorkspaceAccess(context, request, target.workspaceId, 'document.delete');
+
+    const restored = await restoreDeleted(db, target.id, target.deletedBatchId);
+    if (restored.length === 0) throw notFound('That page is not in the trash');
+
+    for (const document of restored) {
+      if (document.isFolder) continue;
+
+      const [state] = await db
+        .select({ markdown: schema.documentStates.markdown })
+        .from(schema.documentStates)
+        .where(eq(schema.documentStates.documentId, document.id))
+        .limit(1);
+
+      await repository.commitFile({
+        workspaceId: target.workspaceId,
+        filepath: await documentRepositoryPath(db, document.id),
+        content: state?.markdown ?? '',
+        message: `Restore ${document.title}`,
+      });
+    }
+
+    void auth;
+    return { restored: restored.length, documentId: target.id };
   });
 
   app.get('/:id/revisions', async (request) => {

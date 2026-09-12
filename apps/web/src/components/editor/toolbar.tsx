@@ -551,7 +551,10 @@ export function EditorToolbar({
   const editable = editor.isEditable;
 
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-0.5 overflow-x-auto border-b border-night-600 bg-night-900/90 px-4 py-1.5 backdrop-blur-sm md:px-9 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div
+      data-print-hidden
+      className="sticky top-0 z-30 flex items-center gap-0.5 overflow-x-auto border-b border-night-600 bg-night-900/90 px-4 py-1.5 backdrop-blur-sm md:px-9 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       <ToolButton
         label="Undo"
         disabled={!editable || !editor.can().undo()}

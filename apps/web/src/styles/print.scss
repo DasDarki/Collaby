@@ -1,0 +1,160 @@
+@media print {
+  html,
+  body {
+    background: #ffffff;
+    height: auto;
+    overflow: visible;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  [data-print-root],
+  [data-print-root] * {
+    visibility: visible;
+  }
+
+  [data-print-root] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  [data-print-hidden] {
+    display: none !important;
+  }
+
+  .collaby-prose {
+    color: #14161f;
+    font-size: 11.5pt;
+    padding: 0;
+    max-width: none;
+
+    > * {
+      max-width: none;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      color: #000000;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    p,
+    li,
+    td,
+    th {
+      color: #14161f;
+    }
+
+    a {
+      color: #3b2f7a;
+      text-decoration: underline;
+    }
+
+    a[data-document-id]::after {
+      content: none;
+    }
+
+    blockquote,
+    blockquote p {
+      border-left-color: #9aa3bd;
+      color: #3c4256;
+    }
+
+    code {
+      background-color: #f1f2f6;
+      color: #2a2f3d;
+      border: 1px solid #dcdfe8;
+    }
+
+    pre {
+      background-color: #f6f7fa;
+      border: 1px solid #dcdfe8;
+      color: #14161f;
+      break-inside: avoid;
+      page-break-inside: avoid;
+
+      code {
+        background: none;
+        border: none;
+        color: #14161f;
+      }
+
+      [class^='hljs-'],
+      [class*=' hljs-'] {
+        color: #14161f;
+      }
+    }
+
+    table {
+      break-inside: avoid;
+      page-break-inside: avoid;
+
+      th,
+      td {
+        border-color: #c9cedd;
+      }
+
+      th {
+        background-color: #f1f2f6;
+      }
+    }
+
+    img,
+    figure,
+    .collaby-figure {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    figcaption {
+      color: #4b5266;
+    }
+
+    .collaby-callout {
+      border: 1px solid #c9cedd;
+      background: #f6f7fa;
+      break-inside: avoid;
+      page-break-inside: avoid;
+
+      &__head,
+      &__title,
+      &__icon {
+        color: #14161f;
+      }
+
+      &__fold {
+        display: none;
+      }
+
+      &__body.is-hidden {
+        display: block;
+      }
+    }
+
+    .collaby-comment-mark {
+      background-color: transparent;
+      border-bottom: none;
+    }
+
+    .ProseMirror-gapcursor,
+    .collaby-caret,
+    .collaby-caret-label {
+      display: none !important;
+    }
+  }
+
+  @page {
+    margin: 18mm 16mm;
+  }
+}

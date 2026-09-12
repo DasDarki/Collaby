@@ -43,6 +43,7 @@ export function PresenceRail({ marks }: { marks: RailMark[] }) {
   return (
     <div
       aria-hidden
+      data-print-hidden
       className="pointer-events-none absolute right-0 top-0 hidden h-full w-[var(--rail-width)] rounded-full bg-night-600/45 lg:block"
     >
       {marks.map((mark) => (

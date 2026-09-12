@@ -45,6 +45,7 @@ export const documents = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp({ withTimezone: true }),
+    deletedBatchId: uuid(),
     titleVector: tsvector().generatedAlwaysAs(
       (): SQL => sql`to_tsvector('simple', coalesce(${documents.title}, ''))`,
     ),
@@ -52,6 +53,7 @@ export const documents = pgTable(
   (table) => [
     index('documents_workspace_idx').on(table.workspaceId),
     index('documents_parent_idx').on(table.parentId),
+    index('documents_deleted_batch_idx').on(table.deletedBatchId),
     index('documents_title_search_idx').using('gin', table.titleVector),
     uniqueIndex('documents_workspace_slug_unique').on(table.workspaceId, table.slug),
   ],

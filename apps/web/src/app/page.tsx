@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { WorkspaceSummary } from '@collaby/shared';
 import { AuthGate } from '@/components/auth-gate';
 import { SearchDialog, useGlobalSearch } from '@/components/search-dialog';
+import { TrashDialog, loadTrash } from '@/components/trash-dialog';
 import { Button, Spinner } from '@/components/ui';
 import { Wordmark } from '@/components/wordmark';
 import { api } from '@/lib/api';
@@ -22,6 +23,8 @@ function Landing() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [switching, setSwitching] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
+  const [trashOpen, setTrashOpen] = useState(false);
   const search = useGlobalSearch();
 
   const settle = useCallback(
@@ -33,7 +36,12 @@ function Landing() {
 
       setWorkspaces(await loadWorkspaces());
       setWorkspaceId(landing.workspaceId);
-      if (landing.workspaceId) await loadDocuments(landing.workspaceId);
+
+      if (landing.workspaceId) {
+        await loadDocuments(landing.workspaceId);
+        setTrashCount(await loadTrash(landing.workspaceId).then((entries) => entries.length));
+      }
+
       setReady(true);
     },
     [router, loadWorkspaces, loadDocuments],
@@ -109,11 +117,31 @@ function Landing() {
         </label>
       ) : null}
 
+      {trashCount > 0 && workspaceId ? (
+        <button
+          type="button"
+          onClick={() => setTrashOpen(true)}
+          className="text-[12.5px] text-dusk underline-offset-4 hover:text-moon hover:underline"
+        >
+          Restore a deleted page
+        </button>
+      ) : null}
+
       <SearchDialog
         open={search.open}
         workspaceId={workspaceId}
         onClose={() => search.setOpen(false)}
       />
+
+      {trashOpen && workspaceId ? (
+        <TrashDialog
+          workspaceId={workspaceId}
+          onClose={() => setTrashOpen(false)}
+          onRestored={async () => {
+            await settle(await api.get<LandingTarget>('/api/account/landing'));
+          }}
+        />
+      ) : null}
     </main>
   );
 }

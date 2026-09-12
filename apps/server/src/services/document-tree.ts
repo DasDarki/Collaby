@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, schema, sql, type Database } from '@collaby/db';
+import { and, asc, eq, inArray, isNotNull, isNull, schema, sql, type Database } from '@collaby/db';
 
 export interface ReorderResult {
   parentId: string | null;
@@ -86,4 +86,85 @@ export async function descendantIds(db: Database, documentId: string): Promise<s
   `);
 
   return [...rows].map((row) => row.id);
+}
+
+export interface RestoredDocument {
+  id: string;
+  title: string;
+  isFolder: boolean;
+}
+
+export async function restoreDeleted(
+  db: Database,
+  documentId: string,
+  batchId: string | null,
+): Promise<RestoredDocument[]> {
+  return db.transaction(async (tx) => {
+    const members = batchId
+      ? await tx
+          .select({ id: schema.documents.id })
+          .from(schema.documents)
+          .where(
+            and(eq(schema.documents.deletedBatchId, batchId), isNotNull(schema.documents.deletedAt)),
+          )
+      : await tx
+          .select({ id: schema.documents.id })
+          .from(schema.documents)
+          .where(and(eq(schema.documents.id, documentId), isNotNull(schema.documents.deletedAt)));
+
+    const ids = members.map((row) => row.id);
+    if (ids.length === 0) return [];
+
+    await tx
+      .update(schema.documents)
+      .set({ deletedAt: null, deletedBatchId: null, updatedAt: new Date() })
+      .where(inArray(schema.documents.id, ids));
+
+    const restored = await tx
+      .select({
+        id: schema.documents.id,
+        title: schema.documents.title,
+        isFolder: schema.documents.isFolder,
+        parentId: schema.documents.parentId,
+        workspaceId: schema.documents.workspaceId,
+      })
+      .from(schema.documents)
+      .where(inArray(schema.documents.id, ids));
+
+    for (const document of restored) {
+      if (!document.parentId) continue;
+
+      const [parent] = await tx
+        .select({ id: schema.documents.id })
+        .from(schema.documents)
+        .where(
+          and(eq(schema.documents.id, document.parentId), isNull(schema.documents.deletedAt)),
+        )
+        .limit(1);
+
+      if (parent) continue;
+
+      const [position] = await tx
+        .select({ next: sql<number>`COALESCE(MAX(${schema.documents.position}), -1) + 1` })
+        .from(schema.documents)
+        .where(
+          and(
+            eq(schema.documents.workspaceId, document.workspaceId),
+            isNull(schema.documents.parentId),
+            isNull(schema.documents.deletedAt),
+          ),
+        );
+
+      await tx
+        .update(schema.documents)
+        .set({ parentId: null, position: position?.next ?? 0 })
+        .where(eq(schema.documents.id, document.id));
+    }
+
+    return restored.map((document) => ({
+      id: document.id,
+      title: document.title,
+      isFolder: document.isFolder,
+    }));
+  });
 }

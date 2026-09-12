@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Editor } from '@tiptap/react';
-import { History, ListTree, MessageSquare, PanelLeft, Share2, X } from 'lucide-react';
+import {
+  Download,
+  FileText,
+  History,
+  ListTree,
+  MessageSquare,
+  PanelLeft,
+  Printer,
+  Share2,
+  X,
+} from 'lucide-react';
+import { documentToMarkdown } from '@collaby/editor';
 import { can, type DocumentDetail } from '@collaby/shared';
 import { CollabyEditor } from '@/components/editor/collaby-editor';
 import { PresenceStack } from '@/components/editor/presence';
@@ -11,11 +22,13 @@ import { CommentsPanel } from '@/components/comments-panel';
 import { HistoryPanel } from '@/components/history-panel';
 import { SearchDialog, useGlobalSearch } from '@/components/search-dialog';
 import { ShareDialog } from '@/components/share-dialog';
+import { Popover } from '@/components/popover';
 import { TocPanel } from '@/components/toc-panel';
 import { Sidebar } from '@/components/sidebar';
 import { Banner, Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { documentFileName, downloadTextFile } from '@/lib/export-document';
 import { useSession } from '@/lib/session';
 import { useWorkspaces } from '@/lib/workspace-store';
 import { useCollabDocument, type CollabIdentity } from '@/components/editor/use-collab-document';
@@ -28,6 +41,19 @@ const GUEST_IDENTITY: CollabIdentity = {
 };
 
 type Panel = 'none' | 'comments' | 'history' | 'toc';
+
+function writeLeadingHeading(editor: Editor | null, title: string): void {
+  if (!editor || editor.isDestroyed || !editor.isEditable) return;
+
+  const heading = editor.state.doc.firstChild;
+  if (!heading || heading.type.name !== 'heading' || heading.attrs.level !== 1) return;
+  if (heading.textContent === title) return;
+
+  editor
+    .chain()
+    .insertContentAt({ from: 1, to: heading.nodeSize - 1 }, title)
+    .run();
+}
 
 export function DocumentView({
   documentId,
@@ -130,9 +156,12 @@ export function DocumentView({
 
   const commitTitle = useCallback(async () => {
     if (!detail || title.trim().length === 0 || title === detail.title) return;
-    await renameDocument(detail.id, title.trim());
-    setDetail({ ...detail, title: title.trim() });
-  }, [detail, title, renameDocument]);
+
+    const next = title.trim();
+    await renameDocument(detail.id, next);
+    setDetail({ ...detail, title: next });
+    writeLeadingHeading(editor, next);
+  }, [detail, title, renameDocument, editor]);
 
   const adoptHeadingTitle = useCallback(
     (heading: string) => {
@@ -166,6 +195,13 @@ export function DocumentView({
 
   const canEdit = can(detail.access.role, 'document.edit');
   const canComment = can(detail.access.role, 'document.comment') && Boolean(user);
+  function exportMarkdown() {
+    if (!editor) return;
+
+    const markdown = documentToMarkdown(editor.state.doc);
+    downloadTextFile(documentFileName(title, 'md'), markdown, 'text/markdown');
+  }
+
   const canShare = can(detail.access.role, 'document.share');
   const canSeeHistory = can(detail.access.role, 'document.history.read');
 
@@ -292,6 +328,52 @@ export function DocumentView({
             <MessageSquare size={14} />
           </button>
 
+          <Popover
+            align="end"
+            className="w-[168px]"
+            trigger={({ open, toggle }) => (
+              <button
+                type="button"
+                aria-label="Export"
+                title="Export"
+                onClick={toggle}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-md',
+                  open ? 'bg-night-700 text-moon' : 'text-dusk hover:bg-night-700 hover:text-moon',
+                )}
+              >
+                <Download size={14} />
+              </button>
+            )}
+          >
+            {({ close }) => (
+              <div className="grid gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    exportMarkdown();
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px] text-haze transition-colors hover:bg-night-750 hover:text-moon"
+                >
+                  <FileText size={12} />
+                  Markdown
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    window.requestAnimationFrame(() => window.print());
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px] text-haze transition-colors hover:bg-night-750 hover:text-moon"
+                >
+                  <Printer size={12} />
+                  PDF
+                </button>
+              </div>
+            )}
+          </Popover>
+
           {canShare ? (
             <button
               type="button"
@@ -305,7 +387,7 @@ export function DocumentView({
           ) : null}
         </header>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={scrollRef} data-print-root className="min-h-0 flex-1 overflow-y-auto">
           <CollabyEditor
             documentId={documentId}
             workspaceId={detail.workspaceId}
